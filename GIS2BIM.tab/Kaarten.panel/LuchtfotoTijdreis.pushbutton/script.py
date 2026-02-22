@@ -8,7 +8,7 @@ en plaats deze op een Revit sheet in een 3x2 grid.
 """
 
 __title__ = "Luchtfoto\nTijdreis"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Download luchtfoto's van verschillende jaren (PDOK) en plaats op een sheet"
 
 # CLR references voor WPF

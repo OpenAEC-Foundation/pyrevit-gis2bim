@@ -11,12 +11,12 @@ Collecties:
 - paal: lantaarnpalen (punt-geometrie, filter op plus-type == "lichtmast")
 
 Families:
-- Bomen: 98_3BM_loofbomen
-- Lantaarns: 90_MLA_GEN_FB_lichtmast
+- Bomen: loofboom (generic)
+- Lantaarns: lichtmast (generic)
 """
 
 __title__ = "BGT\n3D"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "BGT 3D elementen plaatsen (bomen en lantaarnpalen) op basis van PDOK OGC API"
 
 # CLR references voor WPF
@@ -69,8 +69,8 @@ except ImportError as e:
 
 
 # Standaard family namen (worden voorgeselecteerd als ze bestaan)
-DEFAULT_FAMILY_BOMEN = "98_3BM_loofbomen"
-DEFAULT_FAMILY_LANTAARNS = "90_MLA_GEN_FB_lichtmast"
+DEFAULT_FAMILY_BOMEN = "loofboom"
+DEFAULT_FAMILY_LANTAARNS = "lichtmast"
 
 
 def _get_all_family_symbols(doc):

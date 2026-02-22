@@ -8,7 +8,7 @@ teken deze in Revit als Model Lines en Text Notes.
 """
 
 __title__ = "WFS\nLaden"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad perceelgrenzen, straatnamen en huisnummers van PDOK"
 
 # CLR references voor WPF

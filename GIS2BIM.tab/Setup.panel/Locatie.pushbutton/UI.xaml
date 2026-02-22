@@ -9,7 +9,7 @@
     Background="White">
     
     <Window.Resources>
-        <!-- 3BM Kleuren -->
+        <!-- Kleuren -->
         <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
         <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
         <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>

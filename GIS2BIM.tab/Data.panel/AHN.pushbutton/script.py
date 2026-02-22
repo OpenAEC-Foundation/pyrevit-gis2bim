@@ -12,7 +12,7 @@ Twee methoden:
 """
 
 __title__ = "AHN\nLaden"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad AHN hoogtedata (maaiveld/oppervlakte) als Topography"
 
 # CLR references voor WPF

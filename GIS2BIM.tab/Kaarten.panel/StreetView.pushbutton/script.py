@@ -8,7 +8,7 @@ deze op een Revit sheet in een 4x2 grid.
 """
 
 __title__ = "Street View\n360\u00B0"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Download Google Street View 360\u00B0 panorama en plaats op een sheet"
 
 # CLR references voor WPF

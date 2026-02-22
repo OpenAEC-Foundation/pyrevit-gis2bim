@@ -10,7 +10,7 @@ sortering en duplicaat-detectie.
 """
 
 __title__ = "Kaart\nTijdreis"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Download historische kaarten van verschillende jaren en plaats op een sheet"
 
 # CLR references voor WPF

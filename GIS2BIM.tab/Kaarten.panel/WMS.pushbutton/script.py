@@ -8,7 +8,7 @@ en plaats deze als rasterafbeeldingen in Revit views.
 """
 
 __title__ = "WMS\nKaarten"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad WMS kaartbeelden (luchtfoto, bestemmingsplan, geluid, etc.)"
 
 # CLR references voor WPF

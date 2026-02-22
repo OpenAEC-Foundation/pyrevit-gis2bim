@@ -17,7 +17,7 @@ Workflow:
 """
 
 __title__ = "CityJSON\n3D"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad 3D CityJSON gebouwen en omgevingsdata"
 
 # CLR references voor WPF

@@ -13,7 +13,7 @@ Workflow:
 """
 
 __title__ = "BAG3D\nLaden"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad 3D gebouwmodellen (3DBAG) als DirectShape"
 
 # CLR references voor WPF

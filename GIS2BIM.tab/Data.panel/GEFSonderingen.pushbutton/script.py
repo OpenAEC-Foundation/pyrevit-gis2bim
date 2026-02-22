@@ -9,7 +9,7 @@ met gekleurde grondlagen in Revit.
 """
 
 __title__ = "GEF"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad CPT sonderingen en boringen uit de BRO als 3D cilinders"
 
 # CLR references voor WPF

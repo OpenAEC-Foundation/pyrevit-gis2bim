@@ -7,7 +7,7 @@ Stel projectlocatie in via PDOK Locatieserver.
 """
 
 __title__ = "Locatie\nInstellen"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Stel projectlocatie in via PDOK (adres naar RD coördinaten)"
 
 # CLR references voor WPF

@@ -19,7 +19,7 @@ Fallback: osm_building -> default type
 """
 
 __title__ = "OSM"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad OpenStreetMap data (gebouwen, landgebruik, natuur, water)"
 
 # CLR references voor WPF

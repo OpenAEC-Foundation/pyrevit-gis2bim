@@ -19,10 +19,9 @@ import os
 
 def _get_log_directory():
     """Bepaal de centrale log directory met fallback."""
+    appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
     log_paths = [
-        r"Z:\50_projecten\7_3BM_bouwkunde\_AI_logs",
-        r"X:\10_3BM_bouwkunde\50_Claude-Code-Projects\pyrevit\logs",
-        r"C:\DATA\3BM_projecten\50_projecten\7_3BM_bouwkunde\_AI_logs",
+        os.path.join(appdata, 'GIS2BIM', 'logs'),
     ]
     for path in log_paths:
         try:

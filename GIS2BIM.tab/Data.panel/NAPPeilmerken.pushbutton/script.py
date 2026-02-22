@@ -8,7 +8,7 @@ als kruismarkers met hoogte-labels op een Revit plan view.
 """
 
 __title__ = "NAP"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Plaats NAP hoogtepunten (peilmerken) van Rijkswaterstaat op een plan view"
 
 # CLR references voor WPF

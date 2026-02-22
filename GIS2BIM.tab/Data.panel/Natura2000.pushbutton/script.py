@@ -14,7 +14,7 @@ Alles op schaal 1:1000 vanwege Revit's 30.000 ft image width limiet.
 """
 
 __title__ = "Natura\n2000"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Natura 2000 kaart en afstandsberekening tot beschermde natuurgebieden"
 
 # CLR references voor WPF

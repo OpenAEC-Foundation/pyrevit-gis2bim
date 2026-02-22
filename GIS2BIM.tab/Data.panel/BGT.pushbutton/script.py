@@ -8,7 +8,7 @@ en teken deze in Revit als Filled Regions en Detail Lines.
 """
 
 __title__ = "BGT"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Laad BGT topografische data (wegen, water, terrein, gebouwen)"
 
 # CLR references voor WPF

@@ -8,7 +8,7 @@ Ondersteunt zowel map als .zip leveringen.
 """
 
 __title__ = "KLIC"
-__author__ = "3BM Bouwkunde"
+__author__ = "OpenAEC Foundation"
 __doc__ = "Importeer KLIC kabels en leidingen data in Revit"
 
 # CLR references voor WPF
