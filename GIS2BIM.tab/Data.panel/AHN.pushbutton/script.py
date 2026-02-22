@@ -579,6 +579,12 @@ class AHNWindow(Window):
     def _apply_texture(self, topo, image_path, texture_type):
         """Pas textuur materiaal toe op topography element.
 
+        Probeert achtereenvolgens:
+        1. Toposolid type CompoundStructure (Revit 2024+)
+        2. doc.Paint() op faces (Toposolid solid geometry)
+        3. TopographySurface materiaal parameter
+        4. DirectShape overlay als laatste fallback
+
         Args:
             topo: TopographySurface of Toposolid element
             image_path: Pad naar textuur afbeelding
@@ -595,47 +601,147 @@ class AHNWindow(Window):
             mat_id = create_textured_material(
                 self.doc, mat_name, image_path,
                 float(bbox_size), float(bbox_size))
+            log("Materiaal aangemaakt: {0} (ID={1})".format(
+                mat_name, mat_id.IntegerValue))
 
-            # Probeer materiaal toe te wijzen via Paint
+            # Methode 1: Toposolid CompoundStructure (meest betrouwbaar)
+            if self._set_toposolid_type_material(topo, mat_id):
+                log("Textuur via Toposolid type ingesteld")
+                return
+
+            # Methode 2: Paint op Toposolid faces
             success = set_element_material(self.doc, topo, mat_id)
             if success:
-                log("Textuur materiaal toegepast: {0}".format(mat_name))
-            else:
-                log("Paint niet gelukt, probeer parameter override")
-                # Fallback: probeer materiaal parameter
-                self._set_topo_material_param(topo, mat_id)
+                log("Textuur via Paint ingesteld")
+                return
+
+            # Methode 3: TopographySurface materiaal parameter
+            if self._set_topo_material_param(topo, mat_id):
+                log("Textuur via parameter ingesteld")
+                return
+
+            log("Geen methode werkte voor materiaal toewijzing. "
+                "Materiaal '{0}' is wel aangemaakt - handmatig "
+                "toewijzen via Revit.".format(mat_name))
 
         except Exception as e:
             log("Textuur toepassen fout: {0}".format(e))
             log(traceback.format_exc())
 
-    def _set_topo_material_param(self, topo, mat_id):
-        """Probeer materiaal in te stellen via Toposolid type parameter.
+    def _set_toposolid_type_material(self, topo, mat_id):
+        """Stel materiaal in via Toposolid type CompoundStructure.
 
-        Fallback wanneer doc.Paint() niet werkt.
+        Werkt alleen voor Toposolid (Revit 2024+). Dupliceert het type
+        zodat andere toposolids niet worden beinvloed.
+
+        Returns:
+            True als succesvol
         """
         try:
-            # Voor Toposolid: materiaal zit in het type
+            from Autodesk.Revit.DB import Toposolid
+            if not isinstance(topo, Toposolid):
+                log("Element is geen Toposolid, skip type methode")
+                return False
+
+            topo_type = self.doc.GetElement(topo.GetTypeId())
+            log("Toposolid type: {0}".format(
+                Element.Name.__get__(topo_type)))
+
+            # Dupliceer het type zodat we andere toposolids niet beinvloeden
+            new_type_name = "AHN - {0}".format(
+                "Luchtfoto" if "Luchtfoto" in str(mat_id) else "Textuur")
+            try:
+                new_type = topo_type.Duplicate(new_type_name)
+                log("Type gedupliceerd: {0}".format(new_type_name))
+            except Exception:
+                # Type met die naam bestaat al, gebruik het bestaande
+                new_type = topo_type
+                log("Gebruik bestaand type")
+
+            # Stel materiaal in via CompoundStructure
+            cs = new_type.GetCompoundStructure()
+            if cs:
+                changed = False
+                for i in range(cs.LayerCount):
+                    cs.SetMaterialId(i, mat_id)
+                    changed = True
+                if changed:
+                    new_type.SetCompoundStructure(cs)
+                    log("CompoundStructure materiaal ingesteld "
+                        "({0} lagen)".format(cs.LayerCount))
+            else:
+                log("Geen CompoundStructure op type")
+
+            # Wijs het nieuwe type toe aan het element
+            if new_type.Id != topo.GetTypeId():
+                topo.ChangeTypeId(new_type.Id)
+                log("Type gewijzigd naar: {0}".format(new_type_name))
+
+            return True
+
+        except ImportError:
+            log("Toposolid niet beschikbaar (pre-2024)")
+            return False
+        except Exception as e:
+            log("Toposolid type materiaal fout: {0}".format(e))
+            log(traceback.format_exc())
+            return False
+
+    def _set_topo_material_param(self, topo, mat_id):
+        """Probeer materiaal in te stellen via parameter.
+
+        Probeert verschillende benaderingen:
+        1. MATERIAL_ID_PARAM BuiltInParameter
+        2. LookupParameter op naam
+        3. Topography surface site material
+
+        Returns:
+            True als succesvol
+        """
+        # Poging 1: BuiltInParameter
+        try:
             from Autodesk.Revit.DB import BuiltInParameter
             param = topo.get_Parameter(
                 BuiltInParameter.MATERIAL_ID_PARAM)
             if param and not param.IsReadOnly:
                 param.Set(mat_id)
                 log("Materiaal ingesteld via MATERIAL_ID_PARAM")
-                return
-        except Exception:
-            pass
+                return True
+            else:
+                log("MATERIAL_ID_PARAM: read-only of niet gevonden")
+        except Exception as e:
+            log("MATERIAL_ID_PARAM fout: {0}".format(e))
 
+        # Poging 2: LookupParameter op naam
         try:
-            # Alternatief: zoek materiaal parameter op naam
-            for param_name in ["Material", "Materiaal"]:
+            for param_name in ["Material", "Materiaal",
+                               "Phasierung - Material",
+                               "Surface Material"]:
                 param = topo.LookupParameter(param_name)
                 if param and not param.IsReadOnly:
                     param.Set(mat_id)
-                    log("Materiaal ingesteld via LookupParameter")
-                    return
-        except Exception:
-            pass
+                    log("Materiaal ingesteld via LookupParameter "
+                        "'{0}'".format(param_name))
+                    return True
+        except Exception as e:
+            log("LookupParameter fout: {0}".format(e))
+
+        # Poging 3: Type parameter
+        try:
+            topo_type = self.doc.GetElement(topo.GetTypeId())
+            if topo_type:
+                from Autodesk.Revit.DB import BuiltInParameter
+                param = topo_type.get_Parameter(
+                    BuiltInParameter.MATERIAL_ID_PARAM)
+                if param and not param.IsReadOnly:
+                    param.Set(mat_id)
+                    log("Materiaal ingesteld via type MATERIAL_ID_PARAM")
+                    return True
+        except Exception as e:
+            log("Type parameter fout: {0}".format(e))
+
+        log("Geen materiaal parameter gevonden die schrijfbaar is")
+        return False
 
 
 def main():

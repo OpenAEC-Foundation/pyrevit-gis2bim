@@ -1079,6 +1079,9 @@ def create_textured_material(doc, name, image_path, width_m, height_m):
     diffuse bitmap in te stellen op een Generic materiaal.
     Valt terug op een groen materiaal als textuur setup mislukt.
 
+    NB: De textuur is alleen zichtbaar in Realistic of Raytraced
+    visual style in Revit.
+
     Args:
         doc: Revit document
         name: Naam voor het materiaal (bijv. "AHN - Luchtfoto")
@@ -1094,15 +1097,37 @@ def create_textured_material(doc, name, image_path, width_m, height_m):
 
     from Autodesk.Revit.DB import AppearanceAssetElement
 
+    _geom_log("create_textured_material: naam={0}, "
+              "image={1}, size={2}x{3}m".format(
+                  name, image_path, width_m, height_m))
+
+    # Controleer of afbeelding bestaat
+    if not os.path.exists(image_path):
+        _geom_log("FOUT: Afbeelding niet gevonden: {0}".format(image_path))
+        # Maak toch een materiaal aan (groen fallback)
+        mat_id = Material.Create(doc, name)
+        mat = doc.GetElement(mat_id)
+        mat.Color = Color(150, 180, 140)
+        return mat_id
+
     # Zoek bestaand materiaal op naam
     existing_id = _find_material_by_name(doc, name)
     if existing_id:
         mat = doc.GetElement(existing_id)
+        _geom_log("Bestaand materiaal gevonden: ID={0}".format(
+            existing_id.IntegerValue))
         # Probeer textuur te updaten
         if mat.AppearanceAssetId and mat.AppearanceAssetId.IntegerValue != -1:
             _update_bitmap_texture(
                 doc, mat.AppearanceAssetId,
                 image_path, width_m, height_m)
+        else:
+            # Materiaal bestaat maar heeft nog geen AppearanceAsset
+            aae_id = _setup_bitmap_appearance(
+                doc, name, image_path, width_m, height_m)
+            if aae_id:
+                mat.AppearanceAssetId = aae_id
+                _geom_log("AppearanceAsset toegevoegd aan bestaand materiaal")
         return existing_id
 
     # Maak nieuw materiaal
@@ -1110,12 +1135,20 @@ def create_textured_material(doc, name, image_path, width_m, height_m):
     mat = doc.GetElement(mat_id)
     mat.Color = Color(150, 180, 140)  # Lichtgroen fallback
     mat.Transparency = 0
+    _geom_log("Nieuw materiaal aangemaakt: ID={0}".format(
+        mat_id.IntegerValue))
 
     # Probeer textuur in te stellen
     aae_id = _setup_bitmap_appearance(
         doc, name, image_path, width_m, height_m)
     if aae_id:
         mat.AppearanceAssetId = aae_id
+        _geom_log("AppearanceAsset gekoppeld: ID={0}".format(
+            aae_id.IntegerValue))
+    else:
+        _geom_log("WAARSCHUWING: Kon geen AppearanceAsset aanmaken. "
+                   "Materiaal heeft alleen een kleur, geen textuur. "
+                   "Handmatig bitmap toewijzen in Revit.")
 
     return mat_id
 
@@ -1140,8 +1173,10 @@ def _find_material_by_name(doc, name):
 def _setup_bitmap_appearance(doc, name, image_path, width_m, height_m):
     """Maak een AppearanceAssetElement met bitmap textuur.
 
-    Zoekt een bestaand Generic appearance asset om te dupliceren.
-    Als er geen bestaat, maakt er een aan vanuit de Revit asset library.
+    Probeert achtereenvolgens:
+    1. Een bestaand AAE met bitmap dupliceren en pad wijzigen
+    2. Een Generic AAE dupliceren en bitmap toevoegen
+    3. Een Generic asset uit de library halen
 
     Args:
         doc: Revit document
@@ -1155,30 +1190,112 @@ def _setup_bitmap_appearance(doc, name, image_path, width_m, height_m):
     """
     from Autodesk.Revit.DB import AppearanceAssetElement
 
+    asset_name = "GIS2BIM {0}".format(name)
+
+    # Check of AAE met deze naam al bestaat
+    existing_aae = _find_aae_by_name(doc, asset_name)
+    if existing_aae:
+        _geom_log("Bestaand AAE gevonden: {0}".format(asset_name))
+        _set_bitmap_on_asset(
+            doc, existing_aae.Id, image_path, width_m, height_m)
+        return existing_aae.Id
+
+    # Poging 1: Zoek een AAE die AL een bitmap heeft -> dupliceer
     try:
-        # Stap 1: Zoek een Generic appearance asset om te dupliceren
-        source_aae = _find_generic_appearance_asset(doc)
-
-        if source_aae is None:
-            # Probeer vanuit Revit library
-            source_aae = _create_generic_asset_from_library(doc)
-
-        if source_aae is None:
-            _geom_log("Geen Generic appearance asset gevonden")
-            return None
-
-        # Stap 2: Dupliceer het asset
-        asset_name = "GIS2BIM {0}".format(name)
-        new_aae = source_aae.Duplicate(asset_name)
-
-        # Stap 3: Stel bitmap in
-        _set_bitmap_on_asset(doc, new_aae.Id, image_path, width_m, height_m)
-
-        return new_aae.Id
-
+        source_aae = _find_bitmap_appearance_asset(doc)
+        if source_aae:
+            _geom_log("AAE met bitmap gevonden, dupliceren...")
+            new_aae = source_aae.Duplicate(asset_name)
+            _set_bitmap_on_asset(
+                doc, new_aae.Id, image_path, width_m, height_m)
+            return new_aae.Id
     except Exception as e:
-        _geom_log("_setup_bitmap_appearance fout: {0}".format(e))
-        return None
+        _geom_log("Poging 1 (bitmap AAE) mislukt: {0}".format(e))
+
+    # Poging 2: Zoek Generic AAE -> dupliceer + voeg bitmap toe
+    try:
+        source_aae = _find_generic_appearance_asset(doc)
+        if source_aae:
+            _geom_log("Generic AAE gevonden, dupliceren...")
+            new_aae = source_aae.Duplicate(asset_name)
+            _set_bitmap_on_asset(
+                doc, new_aae.Id, image_path, width_m, height_m)
+            return new_aae.Id
+    except Exception as e:
+        _geom_log("Poging 2 (generic AAE) mislukt: {0}".format(e))
+
+    # Poging 3: Maak vanuit Revit asset library
+    try:
+        source_aae = _create_generic_asset_from_library(doc)
+        if source_aae:
+            _geom_log("Library AAE aangemaakt, dupliceren...")
+            new_aae = source_aae.Duplicate(asset_name)
+            _set_bitmap_on_asset(
+                doc, new_aae.Id, image_path, width_m, height_m)
+            return new_aae.Id
+    except Exception as e:
+        _geom_log("Poging 3 (library AAE) mislukt: {0}".format(e))
+
+    # Poging 4: Dupliceer ENIG beschikbaar AAE
+    try:
+        collector = FilteredElementCollector(doc).OfClass(
+            AppearanceAssetElement)
+        for aae in collector:
+            _geom_log("Fallback: dupliceer willekeurig AAE")
+            new_aae = aae.Duplicate(asset_name)
+            _set_bitmap_on_asset(
+                doc, new_aae.Id, image_path, width_m, height_m)
+            return new_aae.Id
+    except Exception as e:
+        _geom_log("Poging 4 (willekeurig AAE) mislukt: {0}".format(e))
+
+    _geom_log("FOUT: Kon geen AppearanceAssetElement aanmaken")
+    return None
+
+
+def _find_aae_by_name(doc, name):
+    """Zoek een AppearanceAssetElement op naam."""
+    from Autodesk.Revit.DB import AppearanceAssetElement
+
+    collector = FilteredElementCollector(doc).OfClass(AppearanceAssetElement)
+    for aae in collector:
+        try:
+            aae_name = Element.Name.__get__(aae)
+        except Exception:
+            aae_name = ""
+        if aae_name == name:
+            return aae
+    return None
+
+
+def _find_bitmap_appearance_asset(doc):
+    """Zoek een bestaand AAE dat al een UnifiedBitmap connected heeft.
+
+    Dit is de meest betrouwbare bron om te dupliceren, want het
+    vermijdt de AddConnectedAsset() call.
+
+    Returns:
+        AppearanceAssetElement of None
+    """
+    from Autodesk.Revit.DB import AppearanceAssetElement
+
+    collector = FilteredElementCollector(doc).OfClass(AppearanceAssetElement)
+    for aae in collector:
+        try:
+            asset = aae.GetRenderingAsset()
+            # Zoek een property met een bitmap connected
+            for i in range(asset.Size):
+                prop = asset.Get(i)
+                if prop and prop.NumberOfConnectedProperties > 0:
+                    connected = prop.GetConnectedProperty(0)
+                    if connected:
+                        bitmap_prop = connected.FindByName(
+                            "unifiedbitmap_Bitmap")
+                        if bitmap_prop:
+                            return aae
+        except Exception:
+            continue
+    return None
 
 
 def _find_generic_appearance_asset(doc):
@@ -1250,37 +1367,85 @@ def _set_bitmap_on_asset(doc, aae_id, image_path, width_m, height_m):
         width_m: Breedte in meters
         height_m: Hoogte in meters
     """
+    scope = None
     try:
         from Autodesk.Revit.DB.Visual import AppearanceAssetEditScope
 
         scope = AppearanceAssetEditScope(doc)
         editable = scope.Start(aae_id)
+        _geom_log("AppearanceAssetEditScope gestart voor AAE {0}".format(
+            aae_id.IntegerValue))
 
-        # Zoek diffuse color property
-        diffuse = editable.FindByName("generic_diffuse")
+        # Zoek diffuse color property - probeer meerdere namen
+        diffuse = None
+        for prop_name in ["generic_diffuse", "ceramic_color",
+                          "matte_color", "metal_color",
+                          "glazing_diffuse"]:
+            diffuse = editable.FindByName(prop_name)
+            if diffuse is not None:
+                _geom_log("Diffuse property gevonden: {0}".format(prop_name))
+                break
+
         if diffuse is None:
+            # Zoek via iteratie: eerste AssetPropertyDoubleArray4d
+            _geom_log("Geen diffuse property op naam, zoek via iteratie...")
+            for i in range(editable.Size):
+                prop = editable.Get(i)
+                if prop and hasattr(prop, 'NumberOfConnectedProperties'):
+                    diffuse = prop
+                    _geom_log("Gebruik property index {0}: {1}".format(
+                        i, prop.Name))
+                    break
+
+        if diffuse is None:
+            _geom_log("Geen geschikte property gevonden voor bitmap")
             scope.Cancel()
             return
 
         # Voeg bitmap connectie toe als die er niet is
         if diffuse.NumberOfConnectedProperties == 0:
-            try:
-                diffuse.AddConnectedAsset("UnifiedBitmap")
-            except Exception as e:
-                _geom_log("AddConnectedAsset fout: {0}".format(e))
+            _geom_log("Geen connected assets, probeer toevoegen...")
+            added = False
+            for schema in ["UnifiedBitmap", "UnifiedBitmapSchema"]:
+                try:
+                    diffuse.AddConnectedAsset(schema)
+                    _geom_log("AddConnectedAsset('{0}') gelukt".format(
+                        schema))
+                    added = True
+                    break
+                except Exception as e:
+                    _geom_log("AddConnectedAsset('{0}') fout: {1}".format(
+                        schema, e))
+            if not added:
+                _geom_log("Kon geen bitmap asset toevoegen")
                 scope.Cancel()
                 return
+        else:
+            _geom_log("Bestaande connected asset gevonden "
+                       "({0})".format(diffuse.NumberOfConnectedProperties))
 
         # Haal de bitmap asset op
         bitmap = diffuse.GetConnectedProperty(0)
         if bitmap is None:
+            _geom_log("GetConnectedProperty(0) gaf None")
             scope.Cancel()
             return
+
+        # Log beschikbare bitmap properties voor debugging
+        _geom_log("Bitmap asset properties:")
+        for i in range(bitmap.Size):
+            p = bitmap.Get(i)
+            if p:
+                _geom_log("  [{0}] {1} = {2}".format(
+                    i, p.Name, getattr(p, 'Value', '?')))
 
         # Stel bitmap pad in
         path_prop = bitmap.FindByName("unifiedbitmap_Bitmap")
         if path_prop:
             path_prop.Value = image_path
+            _geom_log("Bitmap pad ingesteld: {0}".format(image_path))
+        else:
+            _geom_log("WAARSCHUWING: unifiedbitmap_Bitmap niet gevonden")
 
         # Stel real-world schaal in (meters -> feet)
         width_feet = width_m * METER_TO_FEET
@@ -1288,6 +1453,8 @@ def _set_bitmap_on_asset(doc, aae_id, image_path, width_m, height_m):
 
         _set_asset_double(bitmap, "texture_RealWorldScaleX", width_feet)
         _set_asset_double(bitmap, "texture_RealWorldScaleY", height_feet)
+        _geom_log("Schaal ingesteld: {0} x {1} feet".format(
+            width_feet, height_feet))
 
         # Offset: verschuif zodat de textuur gecentreerd is rond origin
         offset_x_feet = -(width_m / 2.0) * METER_TO_FEET
@@ -1296,13 +1463,15 @@ def _set_bitmap_on_asset(doc, aae_id, image_path, width_m, height_m):
         _set_asset_double(bitmap, "texture_RealWorldOffsetY", offset_y_feet)
 
         scope.Commit(True)
+        _geom_log("AppearanceAssetEditScope committed")
 
     except Exception as e:
         _geom_log("_set_bitmap_on_asset fout: {0}".format(e))
-        try:
-            scope.Cancel()
-        except Exception:
-            pass
+        if scope:
+            try:
+                scope.Cancel()
+            except Exception:
+                pass
 
 
 def _update_bitmap_texture(doc, aae_id, image_path, width_m, height_m):
