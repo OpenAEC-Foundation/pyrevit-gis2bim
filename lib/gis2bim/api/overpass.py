@@ -122,6 +122,91 @@ class OverpassClient(object):
 
         return self._parse_response_geom(data, as_polygon)
 
+    def get_pois(self, bbox_wgs84, query_tags):
+        """
+        Haal POI punten op (nodes + way-centers) via Overpass API.
+
+        Gebruikt 'out center;' zodat ways een center-coordinaat krijgen.
+        Parseert zowel node als way elementen.
+
+        Args:
+            bbox_wgs84: Tuple (south, west, north, east) in WGS84 graden
+            query_tags: Lijst van Overpass QL fragments,
+                        bijv. ['node["amenity"="school"]', 'way["amenity"="school"]']
+
+        Returns:
+            Lijst van dicts: [{"lat": float, "lon": float, "tags": dict, "osm_id": int}, ...]
+        """
+        south, west, north, east = bbox_wgs84
+        bbox_str = "{0},{1},{2},{3}".format(south, west, north, east)
+
+        # Bouw Overpass QL query
+        fragments = ""
+        for tag_query in query_tags:
+            fragments += "  {0}({1});\n".format(tag_query, bbox_str)
+
+        # out center: ways krijgen een center coordinaat
+        query = (
+            "[out:json][timeout:{timeout}];\n"
+            "(\n"
+            "{fragments}"
+            ");\n"
+            "out center;"
+        ).format(
+            timeout=self.timeout,
+            fragments=fragments
+        )
+
+        data = self._execute_query(query)
+        if not data:
+            return []
+
+        return self._parse_response_pois(data)
+
+    def _parse_response_pois(self, data):
+        """
+        Parse Overpass JSON response met 'out center' naar POI punten.
+
+        Nodes: direct lat/lon.
+        Ways: center veld (lat/lon).
+        """
+        elements = data.get("elements", [])
+        pois = []
+
+        for elem in elements:
+            etype = elem.get("type")
+            eid = elem.get("id")
+            tags = elem.get("tags", {})
+
+            lat = None
+            lon = None
+
+            if etype == "node":
+                lat = elem.get("lat")
+                lon = elem.get("lon")
+            elif etype == "way":
+                center = elem.get("center")
+                if center:
+                    lat = center.get("lat")
+                    lon = center.get("lon")
+            elif etype == "relation":
+                center = elem.get("center")
+                if center:
+                    lat = center.get("lat")
+                    lon = center.get("lon")
+
+            if lat is not None and lon is not None:
+                pois.append({
+                    "lat": lat,
+                    "lon": lon,
+                    "tags": tags,
+                    "osm_id": eid,
+                })
+
+        self._log("POIs parsed: {0} elements -> {1} points".format(
+            len(elements), len(pois)))
+        return pois
+
     def _execute_query(self, query):
         """Voer een Overpass QL query uit via HTTP POST."""
         try:
