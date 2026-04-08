@@ -1,0 +1,7 @@
+title: Raycast\nExport
+tooltip: >
+  Exporteert thermische schil via raycast scanning.
+  Detecteert cross-model laagopbouw, spouwen en terminals.
+  Output: Thermal Import JSON voor warmteverlies.open-aec.com
+author: 3BM Bouwkunde
+highlight: new
