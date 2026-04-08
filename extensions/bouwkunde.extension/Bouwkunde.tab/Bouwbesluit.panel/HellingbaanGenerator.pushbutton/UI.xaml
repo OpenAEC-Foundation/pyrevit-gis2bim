@@ -1,0 +1,147 @@
+<DockPanel
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Header -->
+    <StackPanel DockPanel.Dock="Top" Background="{DynamicResource VioletBrush}">
+        <TextBlock Text="Hellingbaan Generator"
+                   FontSize="18" FontWeight="SemiBold"
+                   Foreground="White"
+                   Margin="20,16,20,4"/>
+        <TextBlock Text="NEN 2443 - Concept vloeren"
+                   FontSize="12" FontWeight="Medium"
+                   Foreground="{DynamicResource TealBrush}"
+                   Margin="20,0,20,16"/>
+    </StackPanel>
+
+    <!-- Accent Line -->
+    <Rectangle DockPanel.Dock="Top" Height="3" Fill="{DynamicResource TealBrush}"/>
+
+    <!-- Footer -->
+    <Border DockPanel.Dock="Bottom"
+            BorderBrush="{DynamicResource MediumGrayBrush}"
+            BorderThickness="0,1,0,0"
+            Background="{DynamicResource LightGrayBrush}"
+            Padding="20,12">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="btn_plaats" Content="Plaats in Revit"
+                    Style="{DynamicResource PrimaryButton}"/>
+        </StackPanel>
+    </Border>
+
+    <!-- Content -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+
+            <!-- Preview Canvas -->
+            <Border Background="{DynamicResource LightGrayBrush}"
+                    BorderBrush="{DynamicResource MediumGrayBrush}"
+                    BorderThickness="1" CornerRadius="4"
+                    Margin="0,0,0,16">
+                <Canvas x:Name="preview_canvas" Height="150"
+                        ClipToBounds="True"/>
+            </Border>
+
+            <!-- Garage Type + Helling -->
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Column="0" Grid.Row="0" Text="Type garage"
+                           Style="{DynamicResource FieldLabel}"/>
+                <ComboBox x:Name="cmb_garage" Grid.Column="0" Grid.Row="1"
+                          Style="{DynamicResource StandardComboBox}"/>
+
+                <StackPanel Grid.Column="2" Grid.Row="0" Orientation="Horizontal">
+                    <TextBlock Text="Helling (%)"
+                               Style="{DynamicResource FieldLabel}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Grid.Row="1" Orientation="Horizontal">
+                    <TextBox x:Name="txt_helling" Width="80"
+                             Style="{DynamicResource StandardTextBox}"/>
+                    <Button x:Name="btn_reset_helling" Content="R"
+                            Width="28" Height="28" Margin="4,0,0,0"
+                            FontSize="10" Visibility="Collapsed"
+                            Style="{DynamicResource SecondaryButton}"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Hoogte + Breedte -->
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Column="0" Grid.Row="0" Text="Verdiepingshoogte (mm)"
+                           Style="{DynamicResource FieldLabel}"/>
+                <TextBox x:Name="txt_hoogte" Grid.Column="0" Grid.Row="1"
+                         Text="3600" Width="120"
+                         Style="{DynamicResource StandardTextBox}"/>
+
+                <TextBlock Grid.Column="2" Grid.Row="0" Text="Breedte (mm)"
+                           Style="{DynamicResource FieldLabel}"/>
+                <StackPanel Grid.Column="2" Grid.Row="1" Orientation="Horizontal">
+                    <TextBox x:Name="txt_breedte" Text="2750" Width="80"
+                             Style="{DynamicResource StandardTextBox}"/>
+                    <Button x:Name="btn_reset_breedte" Content="R"
+                            Width="28" Height="28" Margin="4,0,0,0"
+                            FontSize="10" Visibility="Collapsed"
+                            Style="{DynamicResource SecondaryButton}"/>
+                    <TextBlock x:Name="lbl_min_breedte" Text="(min: 2750)"
+                               VerticalAlignment="Center" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="8,0,0,0"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Overgangshelling -->
+            <CheckBox x:Name="chk_overgang"
+                      Content="Met overgangshelling (voet- en topboog)"
+                      IsChecked="True"
+                      Style="{DynamicResource StandardCheckBox}"
+                      Margin="0,0,0,12"/>
+
+            <!-- Vloertype -->
+            <TextBlock Text="Vloertype (Revit)"
+                       Style="{DynamicResource FieldLabel}"/>
+            <ComboBox x:Name="cmb_vloer"
+                      Style="{DynamicResource StandardComboBox}"
+                      Margin="0,0,0,16"/>
+
+            <!-- Resultaat Panel -->
+            <Border Background="{DynamicResource LightGrayBrush}"
+                    CornerRadius="4" Padding="16">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="Berekend resultaat" FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource VioletBrush}"/>
+                        <TextBlock x:Name="lbl_zone" FontSize="12"
+                                   Foreground="{DynamicResource TealBrush}"
+                                   Margin="16,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock x:Name="lbl_resultaat"
+                               FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontFamily="Consolas"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</DockPanel>

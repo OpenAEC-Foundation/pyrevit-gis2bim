@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Achtergrond -->
+  <rect width="32" height="32" rx="3" fill="#350E35"/>
+  <!-- Kozijnframe (vereenvoudigd raam) -->
+  <rect x="4" y="5" width="13" height="18" rx="1" fill="none" stroke="#45B6A8" stroke-width="1.5"/>
+  <line x1="10.5" y1="5" x2="10.5" y2="23" stroke="#45B6A8" stroke-width="1"/>
+  <line x1="4" y1="14" x2="17" y2="14" stroke="#45B6A8" stroke-width="1"/>
+  <!-- Hernoem-pijl -->
+  <line x1="20" y1="14" x2="26" y2="14" stroke="#EFBD75" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="23.5,10.5 27,14 23.5,17.5" fill="none" stroke="#EFBD75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- K-merk label -->
+  <text x="26" y="27" font-family="Segoe UI" font-size="8" font-weight="bold" fill="#EFBD75" text-anchor="middle">K</text>
+</svg>

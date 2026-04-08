@@ -1,0 +1,418 @@
+{
+  "Uuid": "3c9d0464-8643-5ffe-96e5-ab1769818209",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "GIS2BIM_BGT_bounderylines_V7",
+  "ElementResolver": {
+    "ResolutionMap": {
+      "String": {
+        "Key": "DSCore.String",
+        "Value": "DSCoreNodes.dll"
+      },
+      "DSCore.List": {
+        "Key": "DSCore.List",
+        "Value": "DSCoreNodes.dll"
+      },
+      "Point": {
+        "Key": "Autodesk.DesignScript.Geometry.Point",
+        "Value": "ProtoGeometry.dll"
+      },
+      "PolyCurve": {
+        "Key": "Autodesk.DesignScript.Geometry.PolyCurve",
+        "Value": "ProtoGeometry.dll"
+      },
+      "Autodesk.Geometry": {
+        "Key": "Autodesk.DesignScript.Geometry.Geometry",
+        "Value": "ProtoGeometry.dll"
+      },
+      "Autodesk.DesignScript.Geometry.Geometry": {
+        "Key": "Autodesk.DesignScript.Geometry.Geometry",
+        "Value": "ProtoGeometry.dll"
+      },
+      "List": {
+        "Key": "List",
+        "Value": "BuiltIn.ds"
+      },
+      "DataSets": {
+        "Key": "Lists.DataSets",
+        "Value": "LunchBox.dll"
+      },
+      "DesignScript.Dictionary": {
+        "Key": "DesignScript.Builtin.Dictionary",
+        "Value": "DesignScriptBuiltin.dll"
+      },
+      "DesignScript.Builtin.Dictionary": {
+        "Key": "DesignScript.Builtin.Dictionary",
+        "Value": "DesignScriptBuiltin.dll"
+      },
+      "FileSystem": {
+        "Key": "DSCore.IO.FileSystem",
+        "Value": "DSCoreNodes.dll"
+      },
+      "List.count": {
+        "Key": "List",
+        "Value": "BuiltIn.ds"
+      },
+      "Math": {
+        "Key": "DSCore.Math",
+        "Value": "DSCoreNodes.dll"
+      }
+    }
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import clr\r\nclr.AddReference('ProtoGeometry')\r\nfrom Autodesk.DesignScript.Geometry import *\r\n\r\n# Import DocumentManager and TransactionManager\r\nclr.AddReference(\"RevitServices\")\r\nimport RevitServices\r\nfrom RevitServices.Persistence import DocumentManager\r\nfrom RevitServices.Transactions import TransactionManager\r\n\r\n# Import RevitAPI\r\nclr.AddReference(\"RevitAPI\")\r\nimport Autodesk\r\nfrom Autodesk.Revit.DB import *\r\n\r\ndoc = DocumentManager.Instance.CurrentDBDocument\r\nuiapp = DocumentManager.Instance.CurrentUIApplication\r\napp = uiapp.Application\r\n\r\n\r\nregion = UnwrapElement(IN[0])\r\nids = UnwrapElement(IN[1])\r\n\r\nTransactionManager.Instance.EnsureInTransaction(doc)\r\n#for region in regions:\r\nfor r in region:\r\n\tFilledRegion.SetLineStyleId(r, ids.Id)\r\n\r\nTransactionManager.Instance.TransactionTaskDone()\r\n\r\n#Assign your outputs to the OUT variable\r\nOUT = region",
+      "Engine": "IronPython2",
+      "VariableInputPorts": true,
+      "Id": "7f1437f8cc954491a644e8b7985024c1",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "c04a5bdf6fab4026a7ac4f928e53ecdb",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "9412c0ac252c4d80a78cd935c2eb5448",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "a1b599c4ef8f47e4bada4d24bf094571",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "archilabUI.LineStyleUi, archilabUI2025",
+      "SelectedIndex": 20,
+      "SelectedString": "bgt_bounderyline",
+      "Id": "c73076b79c3c4aa992336de7b9dee9e8",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "68eb7d7cd47e46aea1d5f2bd3207ddf4",
+          "Name": "lineStyle",
+          "Description": "The selected lineStyle",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Retrieve all available Line Styles."
+    },
+    {
+      "ConcreteType": "DSRevitNodesUI.ElementsOfCategoryInView, DSRevitNodesUI",
+      "Id": "51e4a11ebd9641abaada70b0b707194e",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "87434dd95ca1400db4dcd6dc18644220",
+          "Name": "Category",
+          "Description": "The Category",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "f554b3ea6c774d418b8b584eadb8fb80",
+          "Name": "View",
+          "Description": "The View",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "a039bd0923f940eca8936180bff39c60",
+          "Name": "Elements",
+          "Description": "An element type.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Get all elements of the specified category in the specified view from the model."
+    },
+    {
+      "ConcreteType": "DSRevitNodesUI.Categories, DSRevitNodesUI",
+      "SelectedIndex": 172,
+      "SelectedString": "OST_DetailComponents",
+      "Id": "787ec4ef81ed4835986fc1f536508cd3",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "fd1a7bc6bd7245fb8a10d951e6b77fde",
+          "Name": "Category",
+          "Description": "The selected Category.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "All built-in categories."
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "b3713aa64bf1460180a4ac4fc880b2eb",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "851408d2134041658b92f4923e9b335b",
+          "Name": "document",
+          "Description": "Revit.Application.Document",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "01919d558c6147f592b3891dc80c4ccb",
+          "Name": "View",
+          "Description": "View",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "Revit.Application.Document.ActiveView",
+      "Replication": "Auto",
+      "Description": "Get the active view for the document\n\nDocument.ActiveView: View"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "12d1e26fd7e447c793e99c054c7e46b8",
+      "NodeType": "FunctionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "d3a7ac4687214d68b89b73cfff81a9aa",
+          "Name": "Document",
+          "Description": "Document",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "Revit.Application.Document.Current",
+      "Replication": "Auto",
+      "Description": "Get the current document\n\nDocument.Current: Document"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "68eb7d7cd47e46aea1d5f2bd3207ddf4",
+      "End": "9412c0ac252c4d80a78cd935c2eb5448",
+      "Id": "562682310f4041b1839ef82e4e7cc72f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "a039bd0923f940eca8936180bff39c60",
+      "End": "c04a5bdf6fab4026a7ac4f928e53ecdb",
+      "Id": "df58facbffda46c59b546441d05c8f54",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "fd1a7bc6bd7245fb8a10d951e6b77fde",
+      "End": "87434dd95ca1400db4dcd6dc18644220",
+      "Id": "53ba1d4ed44340d08d617839571340dd",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "01919d558c6147f592b3891dc80c4ccb",
+      "End": "f554b3ea6c774d418b8b584eadb8fb80",
+      "Id": "0966a7bc6f334530a50612b87f64c977",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "d3a7ac4687214d68b89b73cfff81a9aa",
+      "End": "851408d2134041658b92f4923e9b335b",
+      "Id": "a2365970bb474be585991575dbabc15e",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "archi-lab.net",
+      "Version": "2022.210.1022",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "c73076b79c3c4aa992336de7b9dee9e8"
+      ]
+    }
+  ],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.12",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "2.0",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 10000.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.0.6316",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -9.720888137817383,
+      "EyeY": 14.809694290161133,
+      "EyeZ": 9.004975318908691,
+      "LookX": 9.720888137817383,
+      "LookY": -14.809694290161133,
+      "LookZ": -9.004975318908691,
+      "UpX": 0.4291267991065979,
+      "UpY": 0.8110641241073608,
+      "UpZ": -0.39752402901649475
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "7f1437f8cc954491a644e8b7985024c1",
+        "Name": "set boundery lines",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 5765.855116999895,
+        "Y": -39.054739338426884
+      },
+      {
+        "Id": "c73076b79c3c4aa992336de7b9dee9e8",
+        "Name": "Line Styles",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 5358.038491886828,
+        "Y": 72.29130823354592
+      },
+      {
+        "Id": "51e4a11ebd9641abaada70b0b707194e",
+        "Name": "All Elements of Category in View",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 4976.017009108424,
+        "Y": -38.901330194565276
+      },
+      {
+        "Id": "787ec4ef81ed4835986fc1f536508cd3",
+        "Name": "Categories",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 4657.364603081704,
+        "Y": -88.4842313197251
+      },
+      {
+        "Id": "b3713aa64bf1460180a4ac4fc880b2eb",
+        "Name": "Document.ActiveView",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 4679.934955837321,
+        "Y": 88.34621631619461
+      },
+      {
+        "Id": "12d1e26fd7e447c793e99c054c7e46b8",
+        "Name": "Document.Current",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 4419.124001932661,
+        "Y": 92.44049043485632
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "52d4b8548d0240febe53a329a2fb4f00",
+        "Title": "change bounderylines",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "7f1437f8cc954491a644e8b7985024c1",
+          "c73076b79c3c4aa992336de7b9dee9e8"
+        ],
+        "HasNestedGroups": false,
+        "Left": 5348.038491886828,
+        "Top": -98.05473933842688,
+        "Width": 639.816625113067,
+        "Height": 302.3460475719728,
+        "FontSize": 24.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": -39.054739338426884,
+        "InitialHeight": 256.3460475719728,
+        "TextblockHeight": 49.0,
+        "Background": "#FFA4E1FF"
+      }
+    ],
+    "X": -1689.709823320323,
+    "Y": 364.79278713269434,
+    "Zoom": 0.41345963533575497
+  }
+}

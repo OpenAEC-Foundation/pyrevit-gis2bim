@@ -1,9 +1,0 @@
-{
-    "name": "GIS2BIM",
-    "description": "GIS data integratie voor Revit - Nederlandse geo-data (PDOK, BGT, AHN, OSM)",
-    "author": "OpenAEC Foundation",
-    "version": "1.0.0",
-    "website": "https://github.com/OpenAEC-Foundation",
-    "author_url": "https://github.com/OpenAEC-Foundation",
-    "requires": ["pyrevit>=4.8"]
-}

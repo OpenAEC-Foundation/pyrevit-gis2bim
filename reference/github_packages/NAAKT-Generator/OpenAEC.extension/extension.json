@@ -1,0 +1,9 @@
+{
+    "type": "extension",
+    "name": "OpenAEC",
+    "description": "Open-source pyRevit tools for the AEC industry",
+    "author": "OpenAEC Community",
+    "version": "1.0.0",
+    "website": "https://github.com/jochem25/Pyrevit-extensions",
+    "rocket_mode_compatible": true
+}

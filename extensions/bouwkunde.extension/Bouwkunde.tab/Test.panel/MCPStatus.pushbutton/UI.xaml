@@ -1,0 +1,148 @@
+<Window 
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="MCP Server Status"
+    Width="420"
+    SizeToContent="Height"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="NoResize"
+    Background="White">
+    
+    <Window.Resources>
+        <!-- 3BM Huisstijl -->
+        <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
+        <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>
+        <SolidColorBrush x:Key="PeachBrush" Color="#DB4C40"/>
+        <SolidColorBrush x:Key="LightGrayBrush" Color="#F5F5F5"/>
+        <SolidColorBrush x:Key="MediumGrayBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#323232"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#808080"/>
+    </Window.Resources>
+    
+    <DockPanel LastChildFill="True">
+        
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top" Background="{StaticResource VioletBrush}">
+            <TextBlock Text="MCP Server Status" 
+                       FontSize="18" FontWeight="SemiBold" 
+                       Foreground="White"
+                       Margin="20,16,20,4"/>
+            <TextBlock Text="Revit MCP Server Monitor" 
+                       FontSize="12" FontWeight="Medium"
+                       Foreground="{StaticResource TealBrush}"
+                       Margin="20,0,20,16"/>
+        </StackPanel>
+        
+        <!-- Accent Line -->
+        <Rectangle DockPanel.Dock="Top" Height="3" Fill="{StaticResource TealBrush}"/>
+        
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom" 
+                BorderBrush="{StaticResource MediumGrayBrush}" 
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource LightGrayBrush}"
+                Padding="20,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btn_refresh" Content="🔄 Ververs" 
+                        Padding="16,8" Margin="0,0,8,0"
+                        Background="{StaticResource TealBrush}"
+                        Foreground="White"
+                        FontWeight="SemiBold"
+                        BorderThickness="0"
+                        Cursor="Hand"/>
+                <Button x:Name="btn_close" Content="Sluiten" 
+                        Padding="16,8"
+                        Background="White"
+                        Foreground="{StaticResource VioletBrush}"
+                        BorderBrush="{StaticResource MediumGrayBrush}"
+                        Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- Content -->
+        <StackPanel Margin="20">
+            
+            <!-- Server Info Card -->
+            <Border Background="{StaticResource LightGrayBrush}" 
+                    CornerRadius="4" 
+                    Padding="16"
+                    Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <TextBlock Grid.Row="0" Grid.Column="0" 
+                               Text="Host:" 
+                               FontSize="12" 
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,12,4"/>
+                    <TextBlock x:Name="txt_host" 
+                               Grid.Row="0" Grid.Column="1" 
+                               Text="localhost" 
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                    
+                    <TextBlock Grid.Row="1" Grid.Column="0" 
+                               Text="Poort:" 
+                               FontSize="12" 
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,12,0"/>
+                    <TextBlock x:Name="txt_port" 
+                               Grid.Row="1" Grid.Column="1" 
+                               Text="48884" 
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                </Grid>
+            </Border>
+            
+            <!-- Status Indicator -->
+            <Border x:Name="status_border"
+                    Background="{StaticResource LightGrayBrush}" 
+                    CornerRadius="8" 
+                    Padding="24"
+                    Margin="0,0,0,16">
+                <StackPanel HorizontalAlignment="Center">
+                    <!-- Status Icon -->
+                    <TextBlock x:Name="txt_status_icon"
+                               Text="●" 
+                               FontSize="64" 
+                               HorizontalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    
+                    <!-- Status Text -->
+                    <TextBlock x:Name="txt_status"
+                               Text="Controleren..." 
+                               FontSize="18" 
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Margin="0,8,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    
+                    <!-- Status Description -->
+                    <TextBlock x:Name="txt_status_desc"
+                               Text="Even geduld..." 
+                               FontSize="12"
+                               HorizontalAlignment="Center"
+                               Margin="0,4,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+            
+            <!-- Last Check Time -->
+            <TextBlock x:Name="txt_last_check"
+                       Text="Laatste check: --:--:--" 
+                       FontSize="11"
+                       HorizontalAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+            
+        </StackPanel>
+        
+    </DockPanel>
+</Window>

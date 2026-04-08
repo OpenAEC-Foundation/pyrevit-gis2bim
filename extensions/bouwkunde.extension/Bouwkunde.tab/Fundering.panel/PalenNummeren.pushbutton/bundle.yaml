@@ -1,0 +1,17 @@
+title: "Elementen\nNummeren"
+tooltip: |
+  Nummer elementen automatisch in leesvolgorde.
+  
+  - Kies categorie (palen, deuren, ramen, etc.)
+  - Links naar rechts, boven naar onder
+  - Kies prefix en startnummer
+  - Plaatst tekst bij elk element
+  
+  Categorien:
+  - Structural Columns (palen)
+  - Doors, Windows
+  - Generic Models
+  - En meer...
+author: 3BM Bouwkunde
+highlight: new
+context: zero-doc

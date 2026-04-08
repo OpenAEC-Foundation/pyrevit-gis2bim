@@ -1,0 +1,221 @@
+{
+  "Uuid": "67fbdaa0-25cc-4f5c-91a7-263e934e71f7",
+  "IsCustomNode": true,
+  "Category": "GIS2BIM.Image",
+  "Description": "Write Image to file",
+  "Name": "GIS2BIM_ImageToFile",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Symbol, DynamoCore",
+      "Parameter": {
+        "Name": "ImageObject",
+        "TypeName": "var",
+        "TypeRank": -1,
+        "DefaultValue": null,
+        "Description": ""
+      },
+      "Id": "352300ce84274739bc86660456bb8975",
+      "NodeType": "InputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "cd67aca1a41541278c32e87c4bccf0ad",
+          "Name": "",
+          "Description": "Symbol",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "A function parameter, use with custom nodes.\r\n\r\nYou can specify the type and default value for parameter. E.g.,\r\n\r\ninput : var[]..[]\r\nvalue : bool = false"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Symbol, DynamoCore",
+      "Parameter": {
+        "Name": "FileNamePath",
+        "TypeName": "var",
+        "TypeRank": -1,
+        "DefaultValue": null,
+        "Description": ""
+      },
+      "Id": "791380ad75724c85ab7d80283522668a",
+      "NodeType": "InputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "de06b3b74219418b865dea024785e184",
+          "Name": "",
+          "Description": "Symbol",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "A function parameter, use with custom nodes.\r\n\r\nYou can specify the type and default value for parameter. E.g.,\r\n\r\ninput : var[]..[]\r\nvalue : bool = false"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "import sys\n\nsys.path.append(\"C:\\Program Files (x86)\\IronPython 2.7\\Lib\")\nfrom math import *\nimport itertools\nfrom itertools import islice\n\nimport clr\n\nclr.AddReference(\"System.Drawing\")\nfrom System.Drawing import Image\nfrom System.Drawing import Bitmap\nfrom System.Drawing import Graphics\nfrom System.Drawing.Imaging import ImageFormat\nfrom System.IO import Path\nfrom os import listdir\n\nbmp = IN[0]\nfiloc=IN[1]\n\nbmp.Save(filoc, ImageFormat.Jpeg)\n\nOUT = filoc\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "86afdc3763e643c4951c7cf8ec000f11",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "992744196ebc482fbd578202dc75e76e",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "0ad670327b244a22814a464f321a0463",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "61c34399d44c4d84a28b726609f2f493",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Output, DynamoCore",
+      "ElementResolver": null,
+      "Symbol": "FileNamePath",
+      "Id": "64757de31ddd4c14acd0fc457f861ef0",
+      "NodeType": "OutputNode",
+      "Inputs": [
+        {
+          "Id": "5a10690fcf3a4f00a8ae954de1a66351",
+          "Name": "",
+          "Description": "",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [],
+      "Replication": "Disabled",
+      "Description": "A function output, use with custom nodes"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "cd67aca1a41541278c32e87c4bccf0ad",
+      "End": "992744196ebc482fbd578202dc75e76e",
+      "Id": "6e356343c31d445d9435af3cea49f9be",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "de06b3b74219418b865dea024785e184",
+      "End": "0ad670327b244a22814a464f321a0463",
+      "Id": "a65d7e486cd94fc294d88a776fd9eb0b",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "61c34399d44c4d84a28b726609f2f493",
+      "End": "5a10690fcf3a4f00a8ae954de1a66351",
+      "Id": "dd38d1bc5ee942699d27ac1ed43f3748",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Author": "None provided",
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "3.3.0.6316",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -49.89680862426758,
+      "EyeY": 59.63819885253906,
+      "EyeZ": 209.00119018554688,
+      "LookX": 44.89680862426758,
+      "LookY": -48.63819885253906,
+      "LookZ": -217.00119018554688,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "352300ce84274739bc86660456bb8975",
+        "Name": "Input",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1002.4,
+        "Y": 292.8
+      },
+      {
+        "Id": "791380ad75724c85ab7d80283522668a",
+        "Name": "Input",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1003.4,
+        "Y": 439.4
+      },
+      {
+        "Id": "86afdc3763e643c4951c7cf8ec000f11",
+        "Name": "Python Script",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1376.8,
+        "Y": 333.20000000000005
+      },
+      {
+        "Id": "64757de31ddd4c14acd0fc457f861ef0",
+        "Name": "Output",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1684.4,
+        "Y": 332.0
+      }
+    ],
+    "Annotations": [],
+    "X": -1330.54,
+    "Y": -46.41749999999996,
+    "Zoom": 1.1575
+  }
+}

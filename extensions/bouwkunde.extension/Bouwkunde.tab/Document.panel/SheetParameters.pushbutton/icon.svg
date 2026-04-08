@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Achtergrond -->
+  <rect width="32" height="32" rx="3" fill="#350E35"/>
+  
+  <!-- A0 Sheet outline (landscape) -->
+  <rect x="4" y="7" width="24" height="18" rx="0.5" 
+        fill="none" stroke="#45B6A8" stroke-width="1.5"/>
+  
+  <!-- Titleblock -->
+  <rect x="4" y="22" width="24" height="3" 
+        fill="#45B6A8" opacity="0.3"/>
+  
+  <!-- Sheet lines (schematisch tekening) -->
+  <line x1="8" y1="11" x2="18" y2="11" stroke="#45B6A8" stroke-width="0.8" opacity="0.5"/>
+  <line x1="8" y1="14" x2="15" y2="14" stroke="#45B6A8" stroke-width="0.8" opacity="0.5"/>
+  <line x1="8" y1="17" x2="20" y2="17" stroke="#45B6A8" stroke-width="0.8" opacity="0.5"/>
+  <line x1="20" y1="11" x2="24" y2="11" stroke="#45B6A8" stroke-width="0.8" opacity="0.5"/>
+  <line x1="20" y1="14" x2="24" y2="14" stroke="#45B6A8" stroke-width="0.8" opacity="0.5"/>
+  
+  <!-- Parameter symbool (settings) in titleblock -->
+  <circle cx="25.5" cy="23.5" r="1.2" fill="none" stroke="#45B6A8" stroke-width="1"/>
+  <line x1="25.5" y1="22" x2="25.5" y2="22.3" stroke="#45B6A8" stroke-width="0.8"/>
+  <line x1="25.5" y1="24.7" x2="25.5" y2="25" stroke="#45B6A8" stroke-width="0.8"/>
+  <line x1="24.2" y1="23.5" x2="24.5" y2="23.5" stroke="#45B6A8" stroke-width="0.8"/>
+  <line x1="26.5" y1="23.5" x2="26.8" y2="23.5" stroke="#45B6A8" stroke-width="0.8"/>
+</svg>

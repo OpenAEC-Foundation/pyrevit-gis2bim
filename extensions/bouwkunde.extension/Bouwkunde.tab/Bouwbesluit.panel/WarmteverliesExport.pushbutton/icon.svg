@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Achtergrond -->
+  <rect width="32" height="32" rx="3" fill="#350E35"/>
+  <!-- Phi symbool (warmteverlies) -->
+  <text x="11" y="22" font-family="Segoe UI" font-size="16" font-weight="bold" fill="#45B6A8" text-anchor="middle">&#934;</text>
+  <!-- Export pijl (schuin omhoog rechts) -->
+  <line x1="21" y1="22" x2="28" y2="10" stroke="#EFBD75" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="23,10 28,10 28,15" fill="none" stroke="#EFBD75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

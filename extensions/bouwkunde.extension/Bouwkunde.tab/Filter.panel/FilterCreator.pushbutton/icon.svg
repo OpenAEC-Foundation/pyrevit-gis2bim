@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="3" fill="#350E35"/>
+  
+  <!-- Filter funnel icon -->
+  <path d="M6 8 L26 8 L18 18 L18 24 L14 26 L14 18 Z" 
+        fill="none" 
+        stroke="#45B6A8" 
+        stroke-width="2" 
+        stroke-linejoin="round"/>
+  
+  <!-- Plus sign -->
+  <circle cx="24" cy="24" r="6" fill="#45B6A8"/>
+  <path d="M24 21 L24 27 M21 24 L27 24" 
+        stroke="#350E35" 
+        stroke-width="2" 
+        stroke-linecap="round"/>
+</svg>

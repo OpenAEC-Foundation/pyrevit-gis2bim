@@ -1,0 +1,23 @@
+{
+  "beschrijving": "Geldige NAA.K.T. NAMEN (eerste positie)",
+  "format": "naam_kenmerk_toepassing_[eigen-invulling]",
+  "aantal": 16,
+  "namen": [
+    "beton",
+    "bitumen",
+    "cement",
+    "gips",
+    "glas",
+    "grondstof",
+    "hout",
+    "isolatie",
+    "kunststof",
+    "metaal",
+    "natuursteen",
+    "ntb",
+    "organisch",
+    "rubber",
+    "samengesteld",
+    "steenachtig"
+  ]
+}

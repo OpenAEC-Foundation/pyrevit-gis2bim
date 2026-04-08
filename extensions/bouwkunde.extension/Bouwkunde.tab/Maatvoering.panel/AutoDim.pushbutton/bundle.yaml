@@ -1,0 +1,8 @@
+title: AutoDim
+tooltip: >-
+  Automatische maatvoering langs een Detail Line.
+  Detecteert wandkruisingen met filter op dikte.
+  Optioneel: openingen en grids.
+author: 3BM Bouwkunde
+highlight: new
+context: zero-doc

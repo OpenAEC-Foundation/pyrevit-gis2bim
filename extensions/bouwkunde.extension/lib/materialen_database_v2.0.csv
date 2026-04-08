@@ -1,0 +1,151 @@
+﻿Categorie;Naam;Lambda (W/mK);Rd vast (m2K/W);Mu (-);Rho (kg/m3);Keywords
+Spouw;Spouw (niet gevent.) Rd=0.17;;0,17;1;;spouw, lucht, cavity, air
+Spouw;Spouw (gevent.) Rd=0.09;;0,09;1;;spouw, geventileerd
+Spouw;Spouw (sterk gevent.) Rd=0;;0,0;1;;spouw, open
+Mortel;Cementmortel;1,16;;18;2000;cement, mortel, voeg
+Mortel;Kalkmortel;0,91;;10;1800;kalk, mortel
+Mortel;Gipsmortel;0,58;;10;1400;gips, mortel
+Mortel;Isolerende mortel;0,12;;15;450;isolatie, mortel
+Natuursteen;Basalt / Graniet;4,34;;10000;2900;basalt, graniet, natuursteen
+Natuursteen;Kalksteen zacht;1,94;;30;2200;kalksteen, natuursteen
+Natuursteen;Zandsteen;3,75;;40;2600;zandsteen, natuursteen
+Natuursteen;Leisteen;2,2;;1000;2700;leisteen, natuursteen
+Metselwerk;Kalkzandsteen;1,44;;15;1900;kalkzandsteen, ks, silka
+Metselwerk;A2 (Poriso);0,56;;8;1200;poriso, a2, isolatiesteen
+Metselwerk;A3 (Isolatiesteen);0,41;;8;1000;a3, isolatiesteen
+Metselwerk;B1 (Rood);0,72;;10;1400;b1, rood, baksteen
+Metselwerk;B4 (Gevelklinkers);1,065;;50;1800;b4, klinker, gevel
+Metselwerk;Baksteen 700 kg/m3;0,39;;8;700;baksteen, licht
+Metselwerk;Baksteen 1000 kg/m3;0,57;;10;1000;baksteen
+Metselwerk;Baksteen 1400 kg/m3;0,85;;12;1400;baksteen
+Metselwerk;Baksteen 1800 kg/m3;1,16;;16;1800;baksteen, zwaar
+Metselwerk;Poroton;0,33;;10;900;poroton, thermosteen
+Metselwerk;Snelbouw;0,68;;10;1350;snelbouw, betonblok
+Beton;Beton gewapend;1,7;;80;2400;beton, gewapend, constructief
+Beton;Beton ongewapend;1,3;;70;2300;beton, ongewapend
+Beton;Cellenbeton 400;0,16;;6;400;cellenbeton, ytong, 400
+Beton;Cellenbeton 500;0,24;;8;500;cellenbeton, ytong, 500
+Beton;Cellenbeton 600;0,28;;8;600;cellenbeton, ytong, 600
+Beton;Cellenbeton 700;0,32;;10;700;cellenbeton, ytong, 700
+Beton;Cellenbeton 1000;0,47;;15;1000;cellenbeton, ytong, 1000
+Beton;Lichtbeton 1200;0,55;;10;1200;lichtbeton, argex
+Beton;Lichtbeton 1600;0,8;;15;1600;lichtbeton
+Beton;Schuimbeton 400;0,14;;5;400;schuimbeton
+Beton;Schuimbeton 600;0,22;;6;600;schuimbeton
+Beton;Cementdekvloer;1,4;;30;2000;dekvloer, cement, afwerk
+Beton;Anhydriet dekvloer;1,2;;20;2100;anhydriet, dekvloer, giet
+Beton;Breedplaatvloer;1,7;;80;2400;breedplaat, vloer, prefab
+Beton;Kanaalplaatvloer;1,5;;70;1800;kanaalplaat, vloer, hol
+Plaatmateriaal;Gipskartonplaat;0,25;;8;900;gipskarton, gips, gyproc, rigips
+Plaatmateriaal;Gipskarton brandwerend;0,25;;8;1000;gipskarton, brandwerend, rf
+Plaatmateriaal;Gipsvezelplaat (Fermacell);0,32;;13;1150;fermacell, gipsvezel
+Plaatmateriaal;Cellulair glas (Foamglas);0,048;;10000;120;foamglas, cellulair, glas
+Plaatmateriaal;Cementgebonden plaat;0,35;;50;1200;cement, plaat, eternit
+Plaatmateriaal;Vezelcementplaat;0,35;;30;1200;vezelcement, eternit
+Plaatmateriaal;Magnesiumoxideplaat;0,21;;15;1100;mgo, magnesium
+Hout;Naaldhout;0,17;;40;550;naaldhout, vuren, grenen, den, spar
+Hout;Loofhout;0,2;;50;700;loofhout, eiken, beuken
+Hout;Hardhout / Multiplex;0,2;;50;700;hardhout, multiplex, triplex
+Hout;Tropisch hardhout;0,24;;100;900;tropisch, iroko, merbau, azobe
+Hout;OSB;0,13;;30;650;osb, oriented strand
+Hout;Spaanplaat;0,14;;15;650;spaanplaat, particle
+Hout;MDF;0,14;;20;750;mdf, medium density
+Hout;Hardboard (HDF);0,2;;20;900;hardboard, hdf
+Hout;Zachtboard;0,05;;5;250;zachtboard, houtvezel
+Hout;Houtwolcement;0,1;;5;400;houtwol, heraklith
+Hout;CLT (Cross Laminated Timber);0,13;;50;500;clt, massief hout, cross laminated
+Hout;Accoya;0,14;;70;510;accoya, gemodificeerd
+Hout;Thermowood;0,13;;30;420;thermowood, thermisch
+Isolatie - Mineraal;Minerale wol (dekens);0,04;;1;20;mineraal, wol, deken, glaswol, rockwool
+Isolatie - Mineraal;Minerale wol (platen);0,035;;1;50;mineraal, wol, plaat
+Isolatie - Mineraal;Steenwol hoge dichtheid;0,034;;1;100;steenwol, rockwool
+Isolatie - Mineraal;Glaswol;0,035;;1;25;glaswol, isover
+Isolatie - Mineraal;Perlite;0,05;;2;100;perlite
+Isolatie - Mineraal;Vermiculiet;0,07;;3;100;vermiculiet
+Isolatie - Kunststof;EPS;0,035;;40;20;eps, piepschuim, tempex
+Isolatie - Kunststof;EPS grijs (Neopor);0,032;;40;18;eps, grijs, neopor
+Isolatie - Kunststof;XPS;0,034;;150;35;xps, roofmate, styrodur
+Isolatie - Kunststof;PUR;0,026;;50;35;pur, polyurethaan
+Isolatie - Kunststof;PIR;0,023;;50;35;pir, iko, recticel
+Isolatie - Kunststof;PIR alu-bekleed;0,022;;50;35;pir, alu, dampgesloten
+Isolatie - Kunststof;Resolschuim (phenol);0,02;;30;45;resol, phenol, kingspan
+Isolatie - Kunststof;PE-schuim;0,04;;10000;35;pe, schuim, ondervloer
+Isolatie - Natuurlijk;Houtwol;0,04;;3;160;houtwol
+Isolatie - Natuurlijk;Houtvezelisolatie;0,042;;5;50;houtvezel, pavatex, steico
+Isolatie - Natuurlijk;Houtvezelplaat (droog);0,045;;5;160;houtvezel, plaat
+Isolatie - Natuurlijk;Cellulose (inblaas);0,04;;2;50;cellulose, inblaas
+Isolatie - Natuurlijk;Schapenwol;0,04;;2;25;schapenwol, wol
+Isolatie - Natuurlijk;Hennep;0,042;;2;35;hennep, thermo-hemp
+Isolatie - Natuurlijk;Vlas;0,04;;2;30;vlas
+Isolatie - Natuurlijk;Kurk (platen);0,045;;10;120;kurk
+Isolatie - Natuurlijk;Kurk (granulaat);0,055;;10;80;kurk, granulaat
+Isolatie - Natuurlijk;Kokos;0,045;;2;75;kokos
+Isolatie - Natuurlijk;Stro;0,08;;3;100;stro, baal
+Folie - Dampremmend;PE-folie 0.15mm;;0,0;50000;;pe, folie, dampremmend
+Folie - Dampremmend;PE-folie 0.20mm;;0,0;80000;;pe, folie, dampremmend
+Folie - Dampremmend;PE-folie 0.30mm (AVS);;0,0;100000;;pe, avs, dampremmend
+Folie - Miofol;Miofol 125S (dampremmend);;0,0;200000;;miofol, 125s, dampremmend
+Folie - Miofol;Miofol 100S (dampremmend);;0,0;90000;;miofol, 100s
+Folie - Miofol;Miofol 125AV (dampdicht alu);;0,0;7500000;;miofol, 125av, alu, dampdicht
+Folie - Miofol;Miofol 150A (dampdicht gewapend);;0,0;10000000;;miofol, 150a, alu
+Folie - Miofol;Miofol 200AK (zelfklevend);;0,0;10000000;;miofol, 200ak, zelfklevend
+Folie - Miofol;Miofol Active (variabel);;0,0;1000;;miofol, active, variabel, klimaat
+Folie - Miofol;Miofol 125G (dampopen gevel);;0,0;1400;;miofol, 125g, gevel, dampopen
+Folie - Miofol;Miofol 170AG (alu gevel);;0,0;500;;miofol, 170ag, gevel
+Folie - Miofol;Miofol AVS 4 (vloerfolie);;0,0;500000;;miofol, avs, vloer
+Folie - Pro Clima;Pro Clima INTELLO (variabel);;0,0;2500;;proclima, intello, variabel, klimaat
+Folie - Pro Clima;Pro Clima INTELLO PLUS;;0,0;2500;;proclima, intello, plus
+Folie - Pro Clima;Pro Clima DB+ (dampremmend);;0,0;10000;;proclima, db
+Folie - Pro Clima;Pro Clima DA (damprem);;0,0;10000;;proclima, da
+Folie - Pro Clima;Pro Clima SOLITEX MENTO (dampopen);;0,0;125;;proclima, solitex, mento, onderdak
+Folie - Pro Clima;Pro Clima SOLITEX PLUS (dampopen);;0,0;100;;proclima, solitex, plus
+Folie - Pro Clima;Pro Clima SOLITEX WELDANO (dampopen);;0,0;125;;proclima, weldano
+Folie - Pro Clima;Pro Clima SOLITEX FRONTA WA;;0,0;80;;proclima, fronta, gevel
+Folie - Overig;EPDM;0,17;;10000;1200;epdm, rubber, dakbedekking
+Folie - Overig;Bitumen APP;0,23;;50000;1100;bitumen, app, dak
+Folie - Overig;Bitumen SBS;0,23;;25000;1100;bitumen, sbs, dak
+Folie - Overig;PVC dakbedekking;0,16;;50000;1400;pvc, dak
+Folie - Overig;TPO/FPO dakbedekking;0,2;;25000;900;tpo, fpo, dak
+Folie - Overig;Aluminium (pure folie);;0,0;10000000;;alu, aluminium, folie
+Afwerking;Tegelwerk keramisch;1,3;;200;2300;tegel, keramisch, vloer
+Afwerking;Tegels natuursteen;2,0;;1000;2700;tegel, natuursteen
+Afwerking;Stucwerk gips;0,51;;10;1300;stuc, gips, pleister
+Afwerking;Stucwerk kalk-cement;0,87;;20;1800;stuc, kalk, cement
+Afwerking;Spachtelputz;0,7;;15;1400;spachtel, putz, pleister
+Afwerking;Sierpleister mineraal;0,8;;20;1600;sierpleister, korrel
+Afwerking;Acrylaat pleister;0,7;;150;1600;acrylaat, pleister, kunststof
+Afwerking;Silicaat pleister;0,8;;50;1700;silicaat, pleister
+Afwerking;Siliconen pleister;0,8;;80;1700;siliconen, pleister
+Afwerking;Leemstuc;0,7;;8;1500;leem, stuc
+Afwerking;Kalkverf;;0,0;10;;kalk, verf
+Afwerking;Latexverf;;0,0;500;;latex, verf
+Afwerking;Behang vinyl;;0,0;20000;;behang, vinyl
+Afwerking;Behang papier;;0,0;10;;behang, papier
+Vloer;Parket massief;0,17;;50;700;parket, massief, vloer
+Vloer;Laminaat;0,17;;20;850;laminaat, vloer
+Vloer;PVC vloer;0,17;;50000;1400;pvc, vinyl, vloer
+Vloer;Linoleum;0,17;;1000;1200;linoleum, marmoleum, vloer
+Vloer;Tapijt synthetisch;0,06;;5;200;tapijt, vloer
+Vloer;Ondervloer EPS;0,035;;40;20;ondervloer, eps
+Vloer;Ondervloer PUR;0,03;;50;50;ondervloer, pur
+Vloer;Ondervloer rubber;0,17;;10000;1000;ondervloer, rubber
+Metaal;Aluminium;200,0;;10000000;2700;alu, aluminium
+Metaal;Staal;50,0;;10000000;7850;staal, steel
+Metaal;RVS;15,0;;10000000;8000;rvs, roestvaststaal, inox
+Metaal;Koper;380,0;;10000000;8900;koper, copper
+Metaal;Zink;110,0;;10000000;7130;zink, zinc
+Metaal;Lood;35,0;;10000000;11300;lood, lead
+Kunststof;Polyetheen (PE);0,33;;100000;950;pe, polyetheen
+Kunststof;Polypropyleen (PP);0,22;;10000;910;pp, polypropyleen
+Kunststof;PVC hard;0,17;;50000;1400;pvc, hard
+Kunststof;PVC zacht;0,14;;100000;1300;pvc, zacht
+Kunststof;Polycarbonaat;0,2;;5000;1200;pc, polycarbonaat
+Kunststof;PMMA (Acrylaat);0,18;;10000;1180;pmma, acrylaat, plexiglas
+Kunststof;Nylon (PA);0,25;;100;1150;nylon, pa
+Kunststof;Siliconen;0,35;;5000;1100;siliconen
+Glas;Glas float;1,0;;10000000;2500;glas, float, ruit
+Glas;Glasblokken;0,8;;10000000;1400;glasblok
+Overig;Aarde droog;0,52;;2;1500;aarde, grond
+Overig;Aarde vochtig;1,5;;50;1800;aarde, grond, vochtig
+Overig;Zand droog;0,33;;2;1500;zand
+Overig;Grind;0,81;;2;1800;grind

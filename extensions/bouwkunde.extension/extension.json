@@ -1,0 +1,7 @@
+{
+  "type": "extension",
+  "name": "Bouwkunde",
+  "description": "Bouwkundige tools voor Revit - ventilatie, bouwfysica, controles",
+  "author": "3BM Bouwkunde",
+  "version": "1.0.0"
+}

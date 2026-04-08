@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- Achtergrond - Magic Violet -->
+  <rect width="32" height="32" rx="4" fill="#350E35"/>
+  
+  <!-- Grid van palen/elementen - Verdigris -->
+  <circle cx="8" cy="8" r="3" fill="#44B6A8"/>
+  <circle cx="16" cy="8" r="3" fill="#44B6A8"/>
+  <circle cx="24" cy="8" r="3" fill="#44B6A8"/>
+  
+  <circle cx="8" cy="16" r="3" fill="#44B6A8"/>
+  <circle cx="16" cy="16" r="3" fill="#44B6A8"/>
+  <circle cx="24" cy="16" r="3" fill="#44B6A8"/>
+  
+  <circle cx="8" cy="24" r="3" fill="#44B6A8"/>
+  <circle cx="16" cy="24" r="3" fill="#44B6A8"/>
+  <circle cx="24" cy="24" r="3" fill="#44B6A8"/>
+  
+  <!-- Nummers - wit -->
+  <text x="8" y="10" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">1</text>
+  <text x="16" y="10" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">2</text>
+  <text x="24" y="10" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">3</text>
+  
+  <text x="8" y="18" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">4</text>
+  <text x="16" y="18" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">5</text>
+  <text x="24" y="18" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">6</text>
+  
+  <text x="8" y="26" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">7</text>
+  <text x="16" y="26" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">8</text>
+  <text x="24" y="26" font-family="Arial" font-size="5" fill="white" text-anchor="middle" font-weight="bold">9</text>
+</svg>

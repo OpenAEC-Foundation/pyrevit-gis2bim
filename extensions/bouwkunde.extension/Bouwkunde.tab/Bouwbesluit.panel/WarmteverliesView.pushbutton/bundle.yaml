@@ -1,0 +1,7 @@
+title: Warmteverlies View
+tooltip: >-
+  Maak een diagnostische 3D controleview met kleurcodes per grenstype
+  (buiten, grond, onverwarmd, aangrenzend, openings, assembly)
+author: 3BM Bouwkunde
+highlight: new
+context: zero-doc

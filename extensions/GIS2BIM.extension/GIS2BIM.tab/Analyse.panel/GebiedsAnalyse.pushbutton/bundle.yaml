@@ -1,0 +1,8 @@
+title: Gebiedsanalyse
+tooltip: >
+  Analyseer de voorzieningenwaarde van de projectlocatie
+  op basis van OpenStreetMap data (scholen, OV, winkels, etc.)
+  en visualiseer het resultaat als heatmap in Revit.
+author: 3BM Bouwkunde
+context: zero-doc
+highlight: new

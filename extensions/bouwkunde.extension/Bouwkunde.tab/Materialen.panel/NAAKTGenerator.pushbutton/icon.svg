@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Achtergrond -->
+  <rect width="32" height="32" rx="3" fill="#350E35"/>
+  
+  <!-- Materiaal lagen (opbouw wand/vloer) -->
+  
+  <!-- Laag 1 (beton/draagconstructie) -->
+  <rect x="6" y="8" width="20" height="3.5" 
+        fill="#45B6A8" opacity="0.8"/>
+  
+  <!-- Laag 2 (isolatie) -->
+  <rect x="6" y="11.5" width="20" height="3" 
+        fill="#45B6A8" opacity="0.5"/>
+  
+  <!-- Laag 3 (spouw/lucht) -->
+  <rect x="6" y="14.5" width="20" height="2" 
+        fill="none" stroke="#45B6A8" stroke-width="0.8" 
+        stroke-dasharray="2,1"/>
+  
+  <!-- Laag 4 (afwerking/gevel) -->
+  <rect x="6" y="16.5" width="20" height="2.5" 
+        fill="#45B6A8" opacity="0.6"/>
+  
+  <!-- NAA.K.T. label -->
+  <text x="16" y="25" 
+        font-family="Segoe UI" font-size="5" font-weight="bold" 
+        fill="#45B6A8" text-anchor="middle">NAA.K.T.</text>
+  
+  <!-- Dimensie pijltjes (schematisch) -->
+  <line x1="4" y1="8" x2="4" y2="19" stroke="#45B6A8" stroke-width="0.6"/>
+  <line x1="3.5" y1="8.5" x2="4" y2="8" stroke="#45B6A8" stroke-width="0.6"/>
+  <line x1="4.5" y1="8.5" x2="4" y2="8" stroke="#45B6A8" stroke-width="0.6"/>
+  <line x1="3.5" y1="18.5" x2="4" y2="19" stroke="#45B6A8" stroke-width="0.6"/>
+  <line x1="4.5" y1="18.5" x2="4" y2="19" stroke="#45B6A8" stroke-width="0.6"/>
+</svg>

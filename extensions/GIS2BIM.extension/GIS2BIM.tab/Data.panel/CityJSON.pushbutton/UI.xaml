@@ -1,0 +1,280 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="GIS2BIM - CityJSON 3D"
+    Width="520"
+    SizeToContent="Height"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="NoResize"
+    Background="White">
+
+    <Window.Resources>
+        <!-- Kleuren -->
+        <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
+        <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>
+        <SolidColorBrush x:Key="PeachBrush" Color="#DB4C40"/>
+        <SolidColorBrush x:Key="LightGrayBrush" Color="#F5F5F5"/>
+        <SolidColorBrush x:Key="MediumGrayBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#323232"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#808080"/>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top" Background="{StaticResource VioletBrush}">
+            <TextBlock
+                Text="GIS2BIM - CityJSON 3D"
+                FontSize="18"
+                FontWeight="SemiBold"
+                Foreground="White"
+                Margin="20,16,20,4"/>
+            <TextBlock
+                x:Name="txt_subtitle"
+                Text="3D Gebouwen en Omgevingsdata"
+                FontSize="12"
+                FontWeight="Medium"
+                Foreground="{StaticResource TealBrush}"
+                Margin="20,0,20,16"/>
+        </StackPanel>
+
+        <!-- Accent Line -->
+        <Rectangle DockPanel.Dock="Top" Height="3" Fill="{StaticResource TealBrush}"/>
+
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{StaticResource MediumGrayBrush}"
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource LightGrayBrush}"
+                Padding="20,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btn_cancel" Content="Annuleren"
+                        Padding="20,8" Margin="0,0,8,0"
+                        Background="White"
+                        BorderBrush="{StaticResource MediumGrayBrush}"/>
+                <Button x:Name="btn_execute" Content="CityJSON Laden"
+                        Padding="20,8"
+                        Background="{StaticResource TealBrush}"
+                        Foreground="White"
+                        FontWeight="SemiBold"
+                        BorderThickness="0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+            <StackPanel>
+
+                <!-- Locatie Info -->
+                <Border x:Name="pnl_location"
+                        Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="PROJECTLOCATIE"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource VioletBrush}"
+                                   Margin="0,0,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="RD X:"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,0"/>
+                            <TextBlock x:Name="txt_location_x" Grid.Column="1" Text="-"
+                                       Foreground="{StaticResource TealBrush}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="2" Text="RD Y:"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="24,0,12,0"/>
+                            <TextBlock x:Name="txt_location_y" Grid.Column="3" Text="-"
+                                       Foreground="{StaticResource TealBrush}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Waarschuwing geen locatie -->
+                <Border x:Name="pnl_no_location"
+                        Background="#FFF3E0"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="GEEN LOCATIE INGESTELD"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource PeachBrush}"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Text="Stel eerst een projectlocatie in via de Locatie tool. U kunt wel een lokaal bestand laden."
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Data Bron -->
+                <TextBlock Text="DATA BRON"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource VioletBrush}"
+                           Margin="0,0,0,8"/>
+
+                <StackPanel Margin="0,0,0,12">
+                    <RadioButton x:Name="rdo_source_pdok"
+                                 Content="PDOK downloaden (3D Basisvoorziening)"
+                                 GroupName="source"
+                                 IsChecked="True"
+                                 Margin="0,0,0,6"
+                                 FontSize="13"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <RadioButton x:Name="rdo_source_local"
+                                 Content="Lokaal CityJSON bestand"
+                                 GroupName="source"
+                                 Margin="0,0,0,6"
+                                 FontSize="13"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <!-- PDOK Opties -->
+                <Border x:Name="pnl_pdok_options"
+                        Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="ZOEKGEBIED"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource VioletBrush}"
+                                   Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <TextBlock Text="Grootte:"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Margin="0,0,12,0"/>
+                            <ComboBox x:Name="cmb_bbox_size" Width="160" Padding="8,6">
+                                <ComboBoxItem Content="100 x 100 m" Tag="100"/>
+                                <ComboBoxItem Content="200 x 200 m" Tag="200" IsSelected="True"/>
+                                <ComboBoxItem Content="500 x 500 m" Tag="500"/>
+                                <ComboBoxItem Content="1000 x 1000 m" Tag="1000"/>
+                                <ComboBoxItem Content="Hele tile (2x2 km)" Tag="0"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <TextBlock Text="COLLECTIE"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource VioletBrush}"
+                                   Margin="0,0,0,8"/>
+                        <ComboBox x:Name="cmb_collection" Width="280" Padding="8,6"
+                                  HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Gebouwen + Terreinen" Tag="gebouwen_terreinen" IsSelected="True"/>
+                            <ComboBoxItem Content="Alleen gebouwen" Tag="gebouwen"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- Lokaal Bestand Opties -->
+                <Border x:Name="pnl_local_options"
+                        Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="BESTAND"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource VioletBrush}"
+                                   Margin="0,0,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="txt_filepath"
+                                     Grid.Column="0"
+                                     Padding="6,4"
+                                     IsReadOnly="True"
+                                     Background="White"
+                                     Text="Geen bestand geselecteerd"/>
+                            <Button x:Name="btn_browse"
+                                    Grid.Column="1"
+                                    Content="Bladeren..."
+                                    Padding="12,4"
+                                    Margin="8,0,0,0"
+                                    Background="White"
+                                    BorderBrush="{StaticResource MediumGrayBrush}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Detailniveau -->
+                <TextBlock Text="DETAILNIVEAU"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource VioletBrush}"
+                           Margin="0,0,0,8"/>
+
+                <StackPanel Margin="0,0,0,16">
+                    <RadioButton x:Name="rdo_lod22"
+                                 Content="LoD 2.2 - Gedetailleerd (dakvormen)"
+                                 GroupName="lod"
+                                 IsChecked="True"
+                                 Margin="0,0,0,6"
+                                 FontSize="13"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <RadioButton x:Name="rdo_lod13"
+                                 Content="LoD 1.3 - Daken"
+                                 GroupName="lod"
+                                 Margin="0,0,0,6"
+                                 FontSize="13"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <RadioButton x:Name="rdo_lod12"
+                                 Content="LoD 1.2 - Blokken (eenvoudig)"
+                                 GroupName="lod"
+                                 FontSize="13"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <!-- Info -->
+                <Border Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16">
+                    <TextBlock
+                        Text="PDOK tiles zijn ca. 2x2 km en worden automatisch gecropped naar het gekozen zoekgebied. Gebouwen worden individueel geplaatst als DirectShape met bouwjaar en status parameters. Omgevingsdata (wegen, water, terrein) krijgt automatisch kleuren per type."
+                        FontSize="12"
+                        Foreground="{StaticResource TextSecondaryBrush}"
+                        TextWrapping="Wrap"/>
+                </Border>
+
+                <!-- Status/Progress -->
+                <Border x:Name="pnl_progress"
+                        Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock x:Name="txt_progress"
+                                   Text="Bezig met laden..."
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <ProgressBar x:Name="progress_bar"
+                                     Height="4"
+                                     IsIndeterminate="True"
+                                     Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Status/Error -->
+                <TextBlock x:Name="txt_status"
+                           Text=""
+                           FontSize="12"
+                           Foreground="{StaticResource PeachBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,12,0,0"/>
+
+            </StackPanel>
+        </ScrollViewer>
+
+    </DockPanel>
+</Window>

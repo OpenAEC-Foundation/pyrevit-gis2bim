@@ -1,0 +1,11 @@
+title: "Ventilatie\nBalans"
+tooltip: |
+  Bereken ventilatie balans op basis van Revit ruimtes.
+  
+  - Leest alle ruimtes uit het actieve model
+  - Berekent ventilatie-eisen volgens Bouwbesluit/BBL
+  - Toont aanvoer/afvoer balans per zone
+  - Export naar CSV
+author: 3BM Bouwkunde
+highlight: new
+context: zero-doc

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Achtergrond -->
+  <rect width="32" height="32" rx="3" fill="#350E35"/>
+  <!-- Document/lijst -->
+  <rect x="4" y="4" width="15" height="21" rx="1.5" fill="none" stroke="#45B6A8" stroke-width="1.5"/>
+  <!-- Parameter regels -->
+  <line x1="7" y1="9" x2="16" y2="9" stroke="#45B6A8" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="7" y1="13" x2="14" y2="13" stroke="#45B6A8" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="7" y1="17" x2="16" y2="17" stroke="#45B6A8" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>
+  <line x1="7" y1="21" x2="12" y2="21" stroke="#45B6A8" stroke-width="1.2" stroke-linecap="round" opacity="0.4"/>
+  <!-- Vergrootglas (audit) -->
+  <circle cx="23" cy="19" r="5" fill="#350E35" stroke="#EFBD75" stroke-width="1.5"/>
+  <line x1="26.5" y1="22.5" x2="29" y2="25" stroke="#EFBD75" stroke-width="2" stroke-linecap="round"/>
+  <!-- Vinkje in vergrootglas -->
+  <polyline points="20.5,19 22,20.5 25.5,17" fill="none" stroke="#45B6A8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

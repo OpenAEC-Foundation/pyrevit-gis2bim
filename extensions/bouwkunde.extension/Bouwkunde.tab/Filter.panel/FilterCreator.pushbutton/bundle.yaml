@@ -1,0 +1,8 @@
+title: Filter Creator
+tooltip: >
+  Maak een filter op basis van geselecteerd element.
+  Genereert automatisch naam met SfB-code en omschrijving.
+  Ondersteunt categorie-, type- en selectiefilters.
+author: 3BM Bouwkunde
+highlight: new
+context: selection

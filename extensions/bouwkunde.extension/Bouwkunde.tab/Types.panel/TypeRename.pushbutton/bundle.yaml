@@ -1,0 +1,10 @@
+title: Type Hernoem
+tooltip: >
+  Hernoemt family types naar merk_bBREEDTE_hHOOGTE formaat.
+
+  Selecteer een element in het model of een type in de
+  Project Browser en klik op deze tool.
+
+  Leest automatisch Merk, Breedte en Hoogte parameters.
+author: 3BM Bouwkunde
+highlight: new

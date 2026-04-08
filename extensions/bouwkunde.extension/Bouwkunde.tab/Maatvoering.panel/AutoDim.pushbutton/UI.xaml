@@ -1,0 +1,87 @@
+<DockPanel
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Header -->
+    <StackPanel DockPanel.Dock="Top" Background="{DynamicResource VioletBrush}">
+        <TextBlock Text="AutoDim"
+                   FontSize="18" FontWeight="SemiBold"
+                   Foreground="White"
+                   Margin="20,16,20,4"/>
+        <TextBlock Text="Automatische maatvoering"
+                   FontSize="12" FontWeight="Medium"
+                   Foreground="{DynamicResource TealBrush}"
+                   Margin="20,0,20,16"/>
+    </StackPanel>
+
+    <!-- Accent Line -->
+    <Rectangle DockPanel.Dock="Top" Height="3" Fill="{DynamicResource TealBrush}"/>
+
+    <!-- Footer -->
+    <Border DockPanel.Dock="Bottom"
+            BorderBrush="{DynamicResource MediumGrayBrush}"
+            BorderThickness="0,1,0,0"
+            Background="{DynamicResource LightGrayBrush}"
+            Padding="20,12">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="btn_start" Content="Start selectie"
+                    Style="{DynamicResource PrimaryButton}"/>
+        </StackPanel>
+    </Border>
+
+    <!-- Content -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+
+            <!-- Maatlijn type -->
+            <TextBlock Text="Maatlijn type" Style="{DynamicResource SectionHeader}"/>
+            <ComboBox x:Name="cmb_type"
+                      Style="{DynamicResource StandardComboBox}"
+                      MaxDropDownHeight="200"
+                      Margin="0,0,0,20"/>
+
+            <!-- Maatvoering -->
+            <TextBlock Text="Maatvoering" Style="{DynamicResource SectionHeader}"/>
+            <CheckBox x:Name="chk_grids" Content="Grids" IsChecked="True"
+                      Style="{DynamicResource StandardCheckBox}" Margin="0,0,0,6"/>
+            <CheckBox x:Name="chk_total" Content="Totaal (buitenste punten)"
+                      Style="{DynamicResource StandardCheckBox}" Margin="0,0,0,6"/>
+            <CheckBox x:Name="chk_walls" Content="Wanden" IsChecked="True"
+                      Style="{DynamicResource StandardCheckBox}" Margin="0,0,0,6"/>
+            <CheckBox x:Name="chk_columns" Content="Kolommen"
+                      Style="{DynamicResource StandardCheckBox}" Margin="0,0,0,20"/>
+
+            <!-- Filter -->
+            <TextBlock Text="Filter" Style="{DynamicResource SectionHeader}"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                <TextBlock Text="Minimum wanddikte:"
+                           VerticalAlignment="Center"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Margin="0,0,8,0"/>
+                <TextBox x:Name="txt_thickness" Text="20" Width="60"
+                         Style="{DynamicResource StandardTextBox}"/>
+                <TextBlock Text="mm"
+                           VerticalAlignment="Center"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Margin="8,0,0,0"/>
+            </StackPanel>
+
+            <!-- Bronnen -->
+            <TextBlock Text="Bronnen" Style="{DynamicResource SectionHeader}"/>
+            <CheckBox x:Name="chk_linked" Content="Inclusief linked models"
+                      Style="{DynamicResource StandardCheckBox}" Margin="0,0,0,20"/>
+
+            <!-- Info -->
+            <Border Background="{DynamicResource LightGrayBrush}"
+                    CornerRadius="4" Padding="12">
+                <TextBlock TextWrapping="Wrap" FontStyle="Italic" FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="Werkwijze:&#x0a;1. Teken Detail Lines door de elementen&#x0a;2. Selecteer lijnen één voor één&#x0a;3. Per lijn worden aparte maatlijnen gemaakt&#x0a;4. Druk ESC om te stoppen"/>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</DockPanel>

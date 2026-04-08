@@ -1,0 +1,400 @@
+<Window 
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="NAA.K.T. Materiaal Generator"
+    Width="540"
+    Height="680"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="CanResizeWithGrip"
+    Background="White">
+    
+    <Window.Resources>
+        <!-- 3BM Huisstijl -->
+        <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
+        <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>
+        <SolidColorBrush x:Key="PeachBrush" Color="#DB4C40"/>
+        <SolidColorBrush x:Key="LightGrayBrush" Color="#F5F5F5"/>
+        <SolidColorBrush x:Key="MediumGrayBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#323232"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#808080"/>
+        
+        <!-- NAA.K.T. Kleuren -->
+        <SolidColorBrush x:Key="NaamBrush" Color="#1E4D8C"/>
+        <SolidColorBrush x:Key="KenmerkBrush" Color="#E9A52B"/>
+        <SolidColorBrush x:Key="ToepassingBrush" Color="#5CB85C"/>
+        <SolidColorBrush x:Key="EigenBrush" Color="#B4B4B4"/>
+        
+        <!-- TabItem Style -->
+        <Style TargetType="TabItem">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Border" Background="{StaticResource LightGrayBrush}" 
+                                BorderThickness="0,0,0,3" BorderBrush="Transparent" Padding="16,10">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="White"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource TealBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    
+    <DockPanel LastChildFill="True">
+        
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top" Background="{StaticResource VioletBrush}">
+            <TextBlock Text="NAA.K.T. Materiaal Generator" 
+                       FontSize="18" FontWeight="SemiBold" 
+                       Foreground="White"
+                       Margin="20,16,20,4"/>
+            <TextBlock x:Name="txt_subtitle" Text="Eenduidige Materiaalbenaming" 
+                       FontSize="12" FontWeight="Medium"
+                       Foreground="{StaticResource TealBrush}"
+                       Margin="20,0,20,16"/>
+        </StackPanel>
+        
+        <!-- Accent Line -->
+        <Rectangle DockPanel.Dock="Top" Height="3" Fill="{StaticResource TealBrush}"/>
+        
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom" 
+                BorderBrush="{StaticResource MediumGrayBrush}" 
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource LightGrayBrush}"
+                Padding="20,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btn_copy" Content="Kopieer" 
+                        Padding="16,8" Margin="0,0,8,0"
+                        Background="White"
+                        Foreground="{StaticResource VioletBrush}"
+                        BorderBrush="{StaticResource MediumGrayBrush}"
+                        Cursor="Hand"/>
+                <Button x:Name="btn_create" Content="Maak Materiaal" 
+                        Padding="16,8"
+                        Background="{StaticResource TealBrush}"
+                        Foreground="White"
+                        FontWeight="SemiBold"
+                        BorderThickness="0"
+                        Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- Main Content -->
+        <DockPanel>
+            <!-- Preview Panel - Always visible at bottom -->
+            <Border DockPanel.Dock="Bottom" 
+                    Margin="20,0,20,16" Padding="16"
+                    CornerRadius="6"
+                    BorderBrush="{StaticResource MediumGrayBrush}"
+                    BorderThickness="1">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#F0F5FA" Offset="0"/>
+                        <GradientStop Color="#E8F0F6" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <StackPanel>
+                    <TextBlock Text="Gegenereerde materiaalnaam:" 
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,8"/>
+                    <TextBlock x:Name="txt_preview" 
+                               Text="(selecteer naam, kenmerk en toepassing)"
+                               FontSize="15" FontWeight="Bold"
+                               Foreground="{StaticResource VioletBrush}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="Format: naam_kenmerk_toepassing_[eigen-invulling]" 
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+            </Border>
+            
+            <!-- Tab Control -->
+            <TabControl x:Name="tab_main" Margin="0" BorderThickness="0">
+                
+                <!-- TAB 1: NAA.K.T. Naam -->
+                <TabItem>
+                    <TabItem.Header>
+                        <TextBlock Text="NAA.K.T. Naam" FontSize="13"/>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
+                        <StackPanel>
+                            
+                            <!-- 1. NAAM -->
+                            <TextBlock Text="1. NAAM (hoofdgroep)" 
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource VioletBrush}"
+                                       Margin="0,0,0,4"/>
+                            <Rectangle Height="3" Fill="{StaticResource NaamBrush}" 
+                                       HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="32"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="cmb_naam" Grid.Column="0" Padding="8,6"/>
+                                <Button x:Name="btn_add_naam" Grid.Column="2" Content="+" 
+                                        FontWeight="Bold" FontSize="14"
+                                        Background="White"
+                                        Foreground="{StaticResource VioletBrush}"
+                                        BorderBrush="{StaticResource VioletBrush}"/>
+                            </Grid>
+                            
+                            <!-- 2. KENMERK -->
+                            <TextBlock Text="2. KENMERK (roepnaam materiaal)" 
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource VioletBrush}"
+                                       Margin="0,0,0,4"/>
+                            <Rectangle Height="3" Fill="{StaticResource KenmerkBrush}" 
+                                       HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="32"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="cmb_kenmerk" Grid.Column="0" Padding="8,6"/>
+                                <Button x:Name="btn_add_kenmerk" Grid.Column="2" Content="+" 
+                                        FontWeight="Bold" FontSize="14"
+                                        Background="White"
+                                        Foreground="{StaticResource VioletBrush}"
+                                        BorderBrush="{StaticResource VioletBrush}"/>
+                            </Grid>
+                            
+                            <!-- 3. TOEPASSING -->
+                            <TextBlock Text="3. TOEPASSING (vormkenmerk)" 
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource VioletBrush}"
+                                       Margin="0,0,0,4"/>
+                            <Rectangle Height="3" Fill="{StaticResource ToepassingBrush}" 
+                                       HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="32"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="cmb_toepassing" Grid.Column="0" Padding="8,6"/>
+                                <Button x:Name="btn_add_toepassing" Grid.Column="2" Content="+" 
+                                        FontWeight="Bold" FontSize="14"
+                                        Background="White"
+                                        Foreground="{StaticResource VioletBrush}"
+                                        BorderBrush="{StaticResource VioletBrush}"/>
+                            </Grid>
+                            
+                            <!-- 4. EIGEN INVULLING -->
+                            <TextBlock Text="4. Eigen invulling (optioneel: kleur, afmeting, etc.)" 
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource VioletBrush}"
+                                       Margin="0,0,0,4"/>
+                            <Rectangle Height="3" Fill="{StaticResource EigenBrush}" 
+                                       HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+                            <TextBox x:Name="txt_eigen" Padding="8,6" Margin="0,0,0,4"/>
+                            <TextBlock Text="Bijvoorbeeld: rood, 210x100x50, C20/25" 
+                                       FontSize="11" FontStyle="Italic"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                            
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+                
+                <!-- TAB 2: Pattern & Kleur -->
+                <TabItem>
+                    <TabItem.Header>
+                        <TextBlock Text="Pattern &amp; Kleur" FontSize="13"/>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
+                        <StackPanel>
+                            
+                            <!-- SURFACE PATTERN -->
+                            <Border Background="{StaticResource LightGrayBrush}" 
+                                    CornerRadius="6" Padding="16" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource VioletBrush}"
+                                               Margin="0,0,0,12">
+                                        <Run Text=""/><Run Text="Surface Pattern (3D weergave)"/>
+                                    </TextBlock>
+                                    
+                                    <!-- Foreground Pattern -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Foreground" FontSize="12" 
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="cmb_surface_fg" Grid.Column="1" Padding="8,6"/>
+                                    </Grid>
+                                    
+                                    <!-- Foreground Color -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="FG Kleur" FontSize="12" 
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <Button x:Name="btn_surface_fg_color" Grid.Column="1" 
+                                                Height="28" HorizontalContentAlignment="Left"
+                                                Padding="8,4" Background="#323232">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border x:Name="rect_surface_fg" Width="20" Height="16" 
+                                                        Background="#323232" BorderBrush="White" BorderThickness="1"/>
+                                                <TextBlock x:Name="txt_surface_fg_color" Text="#323232" 
+                                                           Foreground="White" Margin="8,0,0,0" 
+                                                           FontFamily="Consolas" FontSize="11"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                    
+                                    <!-- Background Color -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="BG Kleur" FontSize="12" 
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <Button x:Name="btn_surface_bg_color" Grid.Column="1" 
+                                                Height="28" HorizontalContentAlignment="Left"
+                                                Padding="8,4" Background="#C8C8C8">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border x:Name="rect_surface_bg" Width="20" Height="16" 
+                                                        Background="#C8C8C8" BorderBrush="Gray" BorderThickness="1"/>
+                                                <TextBlock x:Name="txt_surface_bg_color" Text="#C8C8C8" 
+                                                           Foreground="#323232" Margin="8,0,0,0" 
+                                                           FontFamily="Consolas" FontSize="11"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                    
+                                    <!-- Preview -->
+                                    <Border Background="White" CornerRadius="4" 
+                                            BorderBrush="{StaticResource MediumGrayBrush}" 
+                                            BorderThickness="1" Padding="8" Margin="0,8,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Preview:" FontSize="10" 
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Margin="0,0,0,4"/>
+                                            <Border x:Name="preview_surface" Height="40" CornerRadius="2"
+                                                    Background="#C8C8C8">
+                                                <TextBlock x:Name="txt_surface_preview" 
+                                                           Text="Solid fill" 
+                                                           HorizontalAlignment="Center" 
+                                                           VerticalAlignment="Center"
+                                                           FontSize="11" Foreground="#666"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- CUT PATTERN -->
+                            <Border Background="{StaticResource LightGrayBrush}" 
+                                    CornerRadius="6" Padding="16">
+                                <StackPanel>
+                                    <TextBlock FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource VioletBrush}"
+                                               Margin="0,0,0,12">
+                                        <Run Text=""/><Run Text="Cut Pattern (doorsnede weergave)"/>
+                                    </TextBlock>
+                                    
+                                    <!-- Foreground Pattern -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Foreground" FontSize="12" 
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="cmb_cut_fg" Grid.Column="1" Padding="8,6"/>
+                                    </Grid>
+                                    
+                                    <!-- Foreground Color -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="FG Kleur" FontSize="12" 
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <Button x:Name="btn_cut_fg_color" Grid.Column="1" 
+                                                Height="28" HorizontalContentAlignment="Left"
+                                                Padding="8,4" Background="#323232">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border x:Name="rect_cut_fg" Width="20" Height="16" 
+                                                        Background="#323232" BorderBrush="White" BorderThickness="1"/>
+                                                <TextBlock x:Name="txt_cut_fg_color" Text="#323232" 
+                                                           Foreground="White" Margin="8,0,0,0" 
+                                                           FontFamily="Consolas" FontSize="11"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                    
+                                    <!-- Background Color -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="BG Kleur" FontSize="12" 
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <Button x:Name="btn_cut_bg_color" Grid.Column="1" 
+                                                Height="28" HorizontalContentAlignment="Left"
+                                                Padding="8,4" Background="#B4B4B4">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border x:Name="rect_cut_bg" Width="20" Height="16" 
+                                                        Background="#B4B4B4" BorderBrush="Gray" BorderThickness="1"/>
+                                                <TextBlock x:Name="txt_cut_bg_color" Text="#B4B4B4" 
+                                                           Foreground="#323232" Margin="8,0,0,0" 
+                                                           FontFamily="Consolas" FontSize="11"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                    
+                                    <!-- Preview -->
+                                    <Border Background="White" CornerRadius="4" 
+                                            BorderBrush="{StaticResource MediumGrayBrush}" 
+                                            BorderThickness="1" Padding="8" Margin="0,8,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Preview:" FontSize="10" 
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Margin="0,0,0,4"/>
+                                            <Border x:Name="preview_cut" Height="40" CornerRadius="2"
+                                                    Background="#B4B4B4">
+                                                <TextBlock x:Name="txt_cut_preview" 
+                                                           Text="Concrete" 
+                                                           HorizontalAlignment="Center" 
+                                                           VerticalAlignment="Center"
+                                                           FontSize="11" Foreground="#666"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                            
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+                
+            </TabControl>
+        </DockPanel>
+        
+    </DockPanel>
+</Window>

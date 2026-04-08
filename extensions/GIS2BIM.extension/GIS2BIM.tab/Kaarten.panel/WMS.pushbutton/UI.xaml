@@ -1,0 +1,205 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="GIS2BIM - WMS Kaarten"
+    Width="500"
+    SizeToContent="Height"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="NoResize"
+    Background="White">
+
+    <Window.Resources>
+        <!-- Kleuren -->
+        <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
+        <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>
+        <SolidColorBrush x:Key="PeachBrush" Color="#DB4C40"/>
+        <SolidColorBrush x:Key="LightGrayBrush" Color="#F5F5F5"/>
+        <SolidColorBrush x:Key="MediumGrayBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#323232"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#808080"/>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top" Background="{StaticResource VioletBrush}">
+            <TextBlock
+                Text="WMS Kaarten"
+                FontSize="18"
+                FontWeight="SemiBold"
+                Foreground="White"
+                Margin="20,16,20,4"/>
+            <TextBlock
+                x:Name="txt_subtitle"
+                Text="Laad kaartbeelden van PDOK, RIVM en meer"
+                FontSize="12"
+                FontWeight="Medium"
+                Foreground="{StaticResource TealBrush}"
+                Margin="20,0,20,16"/>
+        </StackPanel>
+
+        <!-- Accent Line -->
+        <Rectangle DockPanel.Dock="Top" Height="3" Fill="{StaticResource TealBrush}"/>
+
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{StaticResource MediumGrayBrush}"
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource LightGrayBrush}"
+                Padding="20,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btn_cancel" Content="Annuleren"
+                        Padding="20,8" Margin="0,0,8,0"
+                        Background="White"
+                        BorderBrush="{StaticResource MediumGrayBrush}"/>
+                <Button x:Name="btn_execute" Content="Kaarten laden"
+                        Padding="20,8"
+                        Background="{StaticResource TealBrush}"
+                        Foreground="White"
+                        FontWeight="SemiBold"
+                        BorderThickness="0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+            <StackPanel>
+
+                <!-- Locatie Info -->
+                <Border x:Name="pnl_location"
+                        Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="LOCATIE"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource VioletBrush}"
+                                   Margin="0,0,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="RD X:"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,0"/>
+                            <TextBlock x:Name="txt_location_x" Grid.Column="1" Text="-"
+                                       Foreground="{StaticResource TealBrush}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="2" Text="RD Y:"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="24,0,12,0"/>
+                            <TextBlock x:Name="txt_location_y" Grid.Column="3" Text="-"
+                                       Foreground="{StaticResource TealBrush}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Waarschuwing geen locatie -->
+                <Border x:Name="pnl_no_location"
+                        Background="#FFF3E0"
+                        Padding="12"
+                        CornerRadius="3"
+                        Margin="0,0,0,16"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="GEEN LOCATIE INGESTELD"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource PeachBrush}"
+                                   Margin="0,0,0,4"/>
+                        <TextBlock Text="Stel eerst een projectlocatie in via de Locatie tool"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Zoekgebied -->
+                <TextBlock Text="ZOEKGEBIED"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource VioletBrush}"
+                           Margin="0,0,0,8"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock Text="Grootte:"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,12,0"/>
+                    <ComboBox x:Name="cmb_bbox_size" Width="160" Padding="8,6">
+                        <ComboBoxItem Content="200 x 200 m" Tag="200"/>
+                        <ComboBoxItem Content="500 x 500 m" Tag="500" IsSelected="True"/>
+                        <ComboBoxItem Content="1000 x 1000 m" Tag="1000"/>
+                        <ComboBoxItem Content="2000 x 2000 m" Tag="2000"/>
+                        <ComboBoxItem Content="5000 x 5000 m" Tag="5000"/>
+                    </ComboBox>
+                </StackPanel>
+
+                <!-- Kaartlagen -->
+                <TextBlock Text="KAARTLAGEN"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource VioletBrush}"
+                           Margin="0,0,0,8"/>
+
+                <CheckBox x:Name="chk_select_all"
+                          Content="Alles selecteren"
+                          Margin="0,0,0,8"
+                          FontSize="12"
+                          Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                <Border Background="{StaticResource LightGrayBrush}"
+                        CornerRadius="3"
+                        Padding="4"
+                        Margin="0,0,0,16">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  MaxHeight="340">
+                        <StackPanel x:Name="pnl_layers">
+                            <!-- Dynamisch gevuld vanuit script.py -->
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Opties -->
+                <TextBlock Text="OPTIES"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource VioletBrush}"
+                           Margin="0,0,0,8"/>
+
+                <CheckBox x:Name="chk_create_views"
+                          Content="Views aanmaken als ze nog niet bestaan"
+                          IsChecked="True"
+                          Margin="0,0,0,16"
+                          FontSize="13"
+                          Foreground="{StaticResource TextPrimaryBrush}"/>
+
+                <!-- Status/Progress -->
+                <Border x:Name="pnl_progress"
+                        Background="{StaticResource LightGrayBrush}"
+                        Padding="12"
+                        CornerRadius="3"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock x:Name="txt_progress"
+                                   Text="Bezig met laden..."
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <ProgressBar x:Name="progress_bar"
+                                     Height="4"
+                                     IsIndeterminate="True"
+                                     Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Status/Error -->
+                <TextBlock x:Name="txt_status"
+                           Text=""
+                           FontSize="12"
+                           Foreground="{StaticResource PeachBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,12,0,0"/>
+
+            </StackPanel>
+        </ScrollViewer>
+
+    </DockPanel>
+</Window>

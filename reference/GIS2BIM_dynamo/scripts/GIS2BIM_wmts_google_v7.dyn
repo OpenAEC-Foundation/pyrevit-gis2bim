@@ -1,0 +1,2399 @@
+{
+  "Uuid": "48b18931-5022-46f2-99ea-6bc98e0cace4",
+  "IsCustomNode": false,
+  "Description": "",
+  "Name": "GIS2BIM_wmts_google_v7",
+  "ElementResolver": {
+    "ResolutionMap": {
+      "String": {
+        "Key": "DSCore.String",
+        "Value": "DSCoreNodes.dll"
+      }
+    }
+  },
+  "Inputs": [
+    {
+      "Id": "197b5ee1b7394ad7bb0b413b4db4d458",
+      "Name": "Boolean",
+      "Type": "boolean",
+      "Type2": "boolean",
+      "Value": "false",
+      "Description": "Enables selection between True and False",
+      "SelectedIndex": 0
+    }
+  ],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "4b0e2acdf7094f2587ef1a0a26ea6021",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "8bbf3018ee434616af1d1473bfcdedf9",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "21;"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "616e3f40812b436ca8c7976fa04c7e88",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "daccc68431f94cd39e478bbef5a34797",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "250;"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "6f1c4b64-0ef7-451a-a5be-526e34d565c7",
+      "FunctionType": "Graph",
+      "Id": "4b5031f2a58e4853afec15bbddcb7461",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "38b5e90a912944378a35b18868d7d4b6",
+          "Name": "URLlist",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 1,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5617e7ba589943a59010ad227087d225",
+          "Name": "UniqueTileNumbersColumnX",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "11e296d5091643ea82276396f8405158",
+          "Name": "UniqueTileNumbersRowY",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "52115bdd28c54275bc0877c583339172",
+          "Name": "Pixels",
+          "Description": "double\nDefault value : 256",
+          "UsingDefaultValue": true,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "987c32179425479dae96a2355ffd767b",
+          "Name": "WMTSorTMS",
+          "Description": "TMS=false, WMTS=true\n\nbool\nDefault value : false",
+          "UsingDefaultValue": true,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "c0e43bb4a8a64532a21a1e2a329773b0",
+          "Name": "Image",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5516accc752543288175a830bb38865b",
+          "Name": "TileImages",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Webrequest for list of WMTS or TMS/Google webrequests for tiles. Combines them to 1 image."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "Id": "197b5ee1b7394ad7bb0b413b4db4d458",
+      "NodeType": "BooleanInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "30cdcb185ab34ac09692b29e88ffd539",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Enables selection between True and False",
+      "InputValue": false
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "7c2877c1-420f-4ba3-9ed7-292820524228",
+      "FunctionType": "Graph",
+      "Id": "0d73ee75f4d74a5bb60ba92ba3156f29",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "335d019f79c14500836b815a5ea51902",
+          "Name": "TileX",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "e4e024c8b9d040dca57e61df78653db2",
+          "Name": "TileY",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3c2587377db4455fbe20260d45603eda",
+          "Name": "Zoomlevel",
+          "Description": "double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "11a8e664ffd043c7b76e11c0c62d8a07",
+          "Name": "URL Google Earth Satellite",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "0b690414c8f24894b85110e958ac008a",
+          "Name": "URL Google Roads Only",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "bade8c87edac4062b87dc09e6f38a5bd",
+          "Name": "URL Google Standard Roadmap",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "0d1520afd14d4fbe8a870aee7e33786f",
+          "Name": "URL Google Terrain",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "2d2b3a0acc73491b82e7c748bb9bf5de",
+          "Name": "URL Google Alterned Roadmap",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "8b9dc851764c4caea2ecbbd1fcd74275",
+          "Name": "URL Google Terrain Only",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "599827fbf1824a4fae89969d51925ba8",
+          "Name": "URL Google Hybrid",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Library With TMS Webservices"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "6c928bc0-9d4c-4e83-a8c4-a9302f4ab520",
+      "FunctionType": "Graph",
+      "Id": "69bdfc0f6aaa4cb68d61b39d6005983a",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "7a78918014744fd3a634b2de35381436",
+          "Name": "West",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "b9d788fd275341de9345d1dbdfd56d10",
+          "Name": "East",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "68757307fa2745df82af028b2ffaa74b",
+          "Name": "North",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "e26012b9893642bcae2c0b193e3d93ec",
+          "Name": "South",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4d5758802a7047a1a0a099873a309a7d",
+          "Name": "Zoomlevel",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "e241304d78e942c7a9c67655f275b4f4",
+          "Name": "BoundingboxWidth",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "7d7f4b6ef59c4e42a14f321a357acca4",
+          "Name": "TileX",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "793b3c1c0a334b6abb406dd80248760d",
+          "Name": "TileY",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "66d40f35b777441fae428c3f7708ae46",
+          "Name": "TileXUnique",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c1e3366740b744b692936e6c67f6c738",
+          "Name": "TileYUnique",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "d393fa9031a44e3d9af5f81a11916eee",
+          "Name": "WidthM",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "2dc62b1b0a5a4f8b9e6d6986d35661bf",
+          "Name": "DeltaXmm",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "b14f30533c2a4efd870dfde6f777c5b6",
+          "Name": "DeltaYmm",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "8fa9eff6036e4e6fa48146787c04b972",
+          "Name": "HeightM",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Get the Tilenumbers in X and Y in the TMS Webprotocol based on a given Boundingbox in LAT/LON"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "1dce3f92-a7f6-4f10-8b33-384ce92015dc",
+      "FunctionType": "Graph",
+      "Id": "5c4a7a2e97b843449f6d4891b749cfd8",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "abbc208d25b24512b5f4fb77d2136f3b",
+          "Name": "Latitude",
+          "Description": "double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5209b8b803e7463c933a10cab42cf181",
+          "Name": "Longitude",
+          "Description": "double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "198b4b41233a4450bbc835d360a30c33",
+          "Name": "WidthMeters",
+          "Description": "double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "fdb8012d1ca64589a2263e307ef82c55",
+          "Name": "West",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "5b2e08a7dfbd4dc09848ea168cc19ef6",
+          "Name": "East",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3462de689a71456185a3567d7ebfb724",
+          "Name": "North",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "00ee7ed438384538b12735384226a985",
+          "Name": "South",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4a87b01d70ce4c8d82236aa717d3e9ba",
+          "Name": "BBox",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "create boundingbox with from lat/long coordinate in degrees"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "f122b43e60f940bbbaaa1b9592fc341b",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "6363c0270e654d1f9ad0e4f0170339ad",
+          "Name": "location",
+          "Description": "DynamoUnits.Location",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "83cc399fe3824d73bb467be048bebc1a",
+          "Name": "double",
+          "Description": "Longitude geographic coordinate of location",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "DynamoUnits.Location.Longitude",
+      "Replication": "Auto",
+      "Description": "The Location's Longitude in degrees between -180.0 and 180.0\n\nLocation.Longitude: double"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "ba1ed748675148f38f73d92da475ef68",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "12786611c1f04c838ccc30cc6f35fe62",
+          "Name": "location",
+          "Description": "DynamoUnits.Location",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "29d8ea43d06345058ffbbc90262da64b",
+          "Name": "double",
+          "Description": "Latitude geographic coordinate of location",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "DynamoUnits.Location.Latitude",
+      "Replication": "Auto",
+      "Description": "The Location's latitude in degrees between -90.0 and 90.0\n\nLocation.Latitude: double"
+    },
+    {
+      "ConcreteType": "DSRevitNodesUI.SiteLocation, DSRevitNodesUI",
+      "Id": "15683d0de65145f699be0fc24c55215c",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "7d177f2613324a7b835b882fe89b35b8",
+          "Name": "Location",
+          "Description": "The location of the current Revit project.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Returns the current Revit site location."
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "67fbdaa0-25cc-4f5c-91a7-263e934e71f7",
+      "FunctionType": "Graph",
+      "Id": "8a8a4e0d86da4b2dbd7cb826b8295cad",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "1d94d99c2ec74b9abcc2238bcee9435b",
+          "Name": "ImageObject",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "529f0a8bfc7747f69bf9af64948e8e77",
+          "Name": "FileNamePath",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "9cbab9bef7e44b52977750ab4b699353",
+          "Name": "FileNamePath",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Write Image to file"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "Id": "ab894e63d5fe483e99b5defce073b40f",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "0819fbae05914eada010dfe688e59184",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string",
+      "InputValue": "google_wmts.png"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "32a31dd385524edf8ae60df9c9e6b765",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [
+        {
+          "Id": "b9abe7ee259f4b8190ff9ebb4f567b28",
+          "Name": "path",
+          "Description": "path",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "48970393501844eab33af153e5d2bd86",
+          "Name": "slash",
+          "Description": "slash",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "60cbde0b5a2f44c78a96aaf7d5a68abd",
+          "Name": "file",
+          "Description": "file",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "1097c0598c3842d9b70e09d5a0bfafe3",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "path+slash+file;"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DirectoryObject, CoreNodeModels",
+      "Id": "f5a0604df35d4e4ba5c4497bd42c1113",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "4f57ed2f786c4a999cf7a75f960cefe4",
+          "Name": "path",
+          "Description": "Path to the directory.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "9faa483cdd984b978311b6f095821bfd",
+          "Name": "directory",
+          "Description": "Directory object.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a directory object from the given path"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.WatchImageCore, CoreNodeModels",
+      "Id": "521aeee6ceb7411680a31a1f9f675230",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "a979db2f2cec479eb5652ff44f5140aa",
+          "Name": "image",
+          "Description": "image",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "a357d67fdabd4613b372fdacc5c10a0d",
+          "Name": "image",
+          "Description": "image",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Previews an image"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "3cab8fa7-8664-40f0-9534-366efbe884b7",
+      "FunctionType": "Graph",
+      "Id": "0e4e5a1501094bedabc987b312a2f1ec",
+      "NodeType": "FunctionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "782df1569d3c4c9facd79b40eacf4150",
+          "Name": "01 (central)modelpath",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "1064f635465740a9aa4c54d79e5f4d5c",
+          "Name": "02 (central)modeldir",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "069ba3ba76c0447a825a15b099a11c02",
+          "Name": "03 gisdatadir",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "6761ca2eed2646a08cf72ba40b493f6b",
+          "Name": "04 imagedir",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "99f1ef463e7e4d6ea91f6b07945ccec5",
+          "Name": "05 KLICfiles",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "07a3d9587b2046db8a5b6b3489d2ff04",
+          "Name": "06 OSMfiles",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Gets the filepaths from the model."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "Id": "f7852642410a46f590d58296dc9417e8",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "e84fd9d46a5645569a5d8bbf55768191",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string",
+      "InputValue": "\\"
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "Code": "# Load the Python Standard and DesignScript Libraries\r\nimport sys\r\nimport clr\r\nclr.AddReference(\"System.Drawing\")\r\nclr.AddReference(\"System\")\r\nfrom System.Drawing import Image\r\nfrom System.Drawing import Bitmap\r\nfrom System.Drawing import Graphics\r\n\r\n# The inputs to this node will be stored as a list in the IN variables.\r\nimage = IN[0]\r\ncurrentImageSize = IN[1]\r\ncurrentWidth = IN[2]\r\ntargetWidth = IN[3]\r\ndeltaXmm = IN[4]\r\ndeltaYmm = IN[5]\r\n\r\n# Place your code below this line\r\n\r\nresolution = currentImageSize / currentWidth # px per meter\r\ntargetSize = targetWidth * resolution\r\nsizeDifference = currentImageSize - targetSize\r\n\r\nresultImage = Bitmap(targetSize, targetSize)\r\nresultImageGraphics = Graphics.FromImage(resultImage)\r\n\r\nxPixelPos = -1 * sizeDifference / 2 + (deltaXmm * resolution / 1000)\r\nyPixelPos = -1 * sizeDifference / 2 - (deltaYmm * resolution / 1000)\r\n\r\nresultImageGraphics.DrawImage(image, xPixelPos, yPixelPos, currentImageSize, currentImageSize)\r\n\r\n# Assign your output to the OUT variable.\r\nOUT = resultImage\r\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "e73abefd188844dab8463aeaed27629e",
+      "NodeType": "PythonScriptNode",
+      "Inputs": [
+        {
+          "Id": "0944e4af9ac24f5e9c6905d81149763c",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "9823c757bc804f21ae00e8aff3344e76",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4cdb3b5525bb41279f6b9e1fd66083f5",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "c7d430baaa39446fb8f3ec5b97e893b2",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "f4f1073bcb6a433aa0d7516b6cba028e",
+          "Name": "IN[4]",
+          "Description": "Input #4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "184e8e74b0304f748c26bc706e8e6155",
+          "Name": "IN[5]",
+          "Description": "Input #5",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "3967c73ebc0943bd920551cb626d5b9e",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "fd1ea34a19884c37953f1f82a756da46",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [
+        {
+          "Id": "32cb706dcbfa4d3d80fc1674dcc7e631",
+          "Name": "image",
+          "Description": "image",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "335d83fc418d49549c3226037ede73aa",
+          "Name": "curentImageSize",
+          "Description": "curentImageSize",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3236ed37595a491994c23afb923fbffe",
+          "Name": "currentWidth",
+          "Description": "currentWidth",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "acf50d5758374ef4bb44255388857765",
+          "Name": "targetWidth",
+          "Description": "targetWidth",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "de248610a5a54729834a75a98060a452",
+          "Name": "deltaX",
+          "Description": "deltaX",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "f9440c71dbc3469e8e974ed5ecb8398a",
+          "Name": "deltaY",
+          "Description": "deltaY",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "b7df1831782b41bf96e4f08a2ec3b07f",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "6df5f075f1214fc9850a5c411932fc7c",
+          "Name": "",
+          "Description": "Value of expression at line 2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "876d4d25b6b84cd193d5e9d744796af7",
+          "Name": "",
+          "Description": "Value of expression at line 3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "471b6dc69e3b421e84856815d1eaa1ad",
+          "Name": "",
+          "Description": "Value of expression at line 4",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4cda2040399241e49dc7207f1e1ca600",
+          "Name": "",
+          "Description": "Value of expression at line 5",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "139de24e943740189b6a84b752dc35b5",
+          "Name": "",
+          "Description": "Value of expression at line 6",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "image;\ncurentImageSize;\ncurrentWidth;\ntargetWidth;\ndeltaX;\ndeltaY;"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.WatchImageCore, CoreNodeModels",
+      "Id": "2d56d748dbad43b3a2ecbc3cfcc2fd5e",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "a13f6145142d4723921bd061709684de",
+          "Name": "image",
+          "Description": "Image for visualization",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "80c7acb85e774b1db1d690d205627a3c",
+          "Name": "image",
+          "Description": "Image for visualization",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Previews an image"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.ZeroTouch.DSFunction, DynamoCore",
+      "Id": "7c80d5ab5d4d4a8383b4b7bddf516a26",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "c214e795b3bc4840acbd11c710543c81",
+          "Name": "image",
+          "Description": "Image to get dimensions of.\n\nvar",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "dfcb1395602d4a3a8b675a56de1269f7",
+          "Name": "width",
+          "Description": "width of image in pixels",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "7f268b27a4f641caa7a5f2f6b4ee62b6",
+          "Name": "height",
+          "Description": "height of image in pixels",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "FunctionSignature": "DSCore.IO.Image.Dimensions@var",
+      "Replication": "Auto",
+      "Description": "Returns the width and height of an image.\n\nImage.Dimensions (image: var): var[]..[]"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "69824e7d-ba97-4d5f-ae91-522bf95f083b",
+      "FunctionType": "Graph",
+      "Id": "4625d047b0f5425195251dd056e191b7",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "406095f4b2494a8c9287cb592b419963",
+          "Name": "ImageWidthMeters",
+          "Description": "double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "68923d97ae1a459d8c7cad7aaaa174f2",
+          "Name": "view",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "57fddd10c1f84868b8ba3857d92f6882",
+          "Name": "ImagePath",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "ea39236841eb41cfb218904c4971d8cc",
+          "Name": "DeltaX",
+          "Description": "mm\n\ndouble\nDefault value : 0",
+          "UsingDefaultValue": true,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "7da0c6ffcee54ba09d0128a74c35ca79",
+          "Name": "DeltaY",
+          "Description": "mm\n\ndouble\nDefault value : 0",
+          "UsingDefaultValue": true,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "de0ddb25bd2942abad10c30703f9ca3a",
+          "Name": "",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Longest",
+      "Description": "Import rasterimage in view"
+    },
+    {
+      "ConcreteType": "DSRevitNodesUI.Views, DSRevitNodesUI",
+      "SelectedIndex": 40,
+      "SelectedString": "GIS2BIM_int_aerial",
+      "Id": "27c43fb76ce645deb17dab7621bba39d",
+      "NodeType": "ExtensionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "3e0ef1736ad64d5ea50ab849401223f9",
+          "Name": "Views",
+          "Description": "The selected Views",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "All views available in the current document."
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "67fbdaa0-25cc-4f5c-91a7-263e934e71f7",
+      "FunctionType": "Graph",
+      "Id": "3e4ecc60ff5748549dc98d2b327f5fb5",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "8ee29adbfe434cf9b6183c23055849b4",
+          "Name": "ImageObject",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4b60bc0694e746e7af2294e674a7a16f",
+          "Name": "FileNamePath",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "16ca939960b34625bdcfd76605558e8f",
+          "Name": "FileNamePath",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Write Image to file"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "69824e7d-ba97-4d5f-ae91-522bf95f083b",
+      "FunctionType": "Graph",
+      "Id": "17d38745c4974e6ea3cd5c57e9663331",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "220bb9ee3ca243f491e54c1a59d07a8d",
+          "Name": "ImageWidthMeters",
+          "Description": "double",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "31257b2f72ac448a9a6d08cf14aca074",
+          "Name": "view",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "e0b734a080b848d3aa289b60bd9bccc1",
+          "Name": "ImagePath",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "a19553b9a13b45da93bf3a429f19d934",
+          "Name": "DeltaX",
+          "Description": "mm\n\ndouble\nDefault value : 0",
+          "UsingDefaultValue": true,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "f140f5f811a64b49a2b9cf2433a4ba88",
+          "Name": "DeltaY",
+          "Description": "mm\n\ndouble\nDefault value : 0",
+          "UsingDefaultValue": true,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "fedd53b91f2a43eca8f6527b2e1a141e",
+          "Name": "",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Longest",
+      "Description": "Import rasterimage in view"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "Id": "3e24dd0de3e34891ba28e208c4d928b2",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "f1de8d0821d8400a835c7234a7cc116b",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string",
+      "InputValue": "google_wmts_full.png"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "958f8bba1f5648d5ad75917c57acb3f3",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [
+        {
+          "Id": "dc0b9e28be794412bb32f9e91187afd0",
+          "Name": "path",
+          "Description": "path",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "0896380c64224e30b646716e46cae1f6",
+          "Name": "slash",
+          "Description": "slash",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "d5a9ad27242f436997c2f8a6c4371a06",
+          "Name": "file",
+          "Description": "file",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "6d01186f24e5423a985d9333de6cc270",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "path+slash+file;"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.DirectoryObject, CoreNodeModels",
+      "Id": "02152e3b71c14faea11281391c94d0dc",
+      "NodeType": "ExtensionNode",
+      "Inputs": [
+        {
+          "Id": "564444a9e0414e369f37cdfc5ac3d069",
+          "Name": "path",
+          "Description": "Path to the directory (type: string)",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "a45686368ced4156954e4b2a6010d177",
+          "Name": "directory",
+          "Description": "Directory object.",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a directory object from the given path"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "3cab8fa7-8664-40f0-9534-366efbe884b7",
+      "FunctionType": "Graph",
+      "Id": "0c23ad30e517462bb422db9bdf5eba79",
+      "NodeType": "FunctionNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "21efd18870474f0a99d524238c14c135",
+          "Name": "01 (central)modelpath",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "ecd6466f097345d3a37f87d6d249be41",
+          "Name": "02 (central)modeldir",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "ba225c5286c241d390eff13f3234a6ba",
+          "Name": "03 gisdatadir",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "a019416086fa498fbeb73b37dd61e481",
+          "Name": "04 imagedir",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "720ab96d39f846d9bcd71f0ffd601c11",
+          "Name": "05 KLICfiles",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "02709d8830f643568d0a2e561c18410a",
+          "Name": "06 OSMfiles",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Gets the filepaths from the model."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.StringInput, CoreNodeModels",
+      "Id": "8564f1f78d624030ad181a588fdf034e",
+      "NodeType": "StringInputNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "4f3d00d89a6f4d3e9e58149840ab2e9b",
+          "Name": "",
+          "Description": "String",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Creates a string",
+      "InputValue": "\\"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CustomNodes.Function, DynamoCore",
+      "FunctionSignature": "4743c784-373d-4ed2-bd25-a92e88bc49f4",
+      "FunctionType": "Graph",
+      "Id": "8fe9c07230284d5e91d9ae7ba0e241ed",
+      "NodeType": "FunctionNode",
+      "Inputs": [
+        {
+          "Id": "aab61e34b1554b49b6bb47c2c41a14e6",
+          "Name": "Viewname",
+          "Description": "var[]..[]",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "b97aed4a6b89464d96f7148e227348b4",
+          "Name": "view",
+          "Description": "return value",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Auto",
+      "Description": "Select a view by its name"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "Id": "bc5d23ceec3445a699a9b7683ae72511",
+      "NodeType": "CodeBlockNode",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "167415c7555444c58a206e19b59fe0cc",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Allows for DesignScript code to be authored directly",
+      "Code": "\"GIS2BIM_WMTS_google\";"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "8bbf3018ee434616af1d1473bfcdedf9",
+      "End": "3c2587377db4455fbe20260d45603eda",
+      "Id": "d5a6a27bef4445e59aea48cd80d80848",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "8bbf3018ee434616af1d1473bfcdedf9",
+      "End": "4d5758802a7047a1a0a099873a309a7d",
+      "Id": "0596e181cf464f0d86a50779b042023b",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "daccc68431f94cd39e478bbef5a34797",
+      "End": "e241304d78e942c7a9c67655f275b4f4",
+      "Id": "e1c18d8070ed4c429e9a8d797b2596a5",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "daccc68431f94cd39e478bbef5a34797",
+      "End": "198b4b41233a4450bbc835d360a30c33",
+      "Id": "5081d1bdef5e42e2b15496cd802cbe4d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "daccc68431f94cd39e478bbef5a34797",
+      "End": "acf50d5758374ef4bb44255388857765",
+      "Id": "c65cf2d47a0646a2a14f7eb18db8c13f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "daccc68431f94cd39e478bbef5a34797",
+      "End": "406095f4b2494a8c9287cb592b419963",
+      "Id": "adb834a42093405e85083c09703700f8",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "c0e43bb4a8a64532a21a1e2a329773b0",
+      "End": "a979db2f2cec479eb5652ff44f5140aa",
+      "Id": "793c61fda3954d69ad7462ae1c6755e2",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "c0e43bb4a8a64532a21a1e2a329773b0",
+      "End": "c214e795b3bc4840acbd11c710543c81",
+      "Id": "3afe3c23eabf4830a9460b6844e0e9f5",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "c0e43bb4a8a64532a21a1e2a329773b0",
+      "End": "32cb706dcbfa4d3d80fc1674dcc7e631",
+      "Id": "3ae5fbbe86b24c73878d05ac9d8573f1",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "c0e43bb4a8a64532a21a1e2a329773b0",
+      "End": "8ee29adbfe434cf9b6183c23055849b4",
+      "Id": "0dfb0b39e8844c50bb3359ae3c93bdb9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "30cdcb185ab34ac09692b29e88ffd539",
+      "End": "987c32179425479dae96a2355ffd767b",
+      "Id": "b4d58e8327bf4569b64a06313aad0029",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "11a8e664ffd043c7b76e11c0c62d8a07",
+      "End": "38b5e90a912944378a35b18868d7d4b6",
+      "Id": "be1e1a266e6f46f4b31383a896f6c66f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7d7f4b6ef59c4e42a14f321a357acca4",
+      "End": "335d019f79c14500836b815a5ea51902",
+      "Id": "bbd8fc10e4064696bf91c8c68b9aad90",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "793b3c1c0a334b6abb406dd80248760d",
+      "End": "e4e024c8b9d040dca57e61df78653db2",
+      "Id": "ca0a135baa194c7eb89ddad2834ddec2",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "66d40f35b777441fae428c3f7708ae46",
+      "End": "5617e7ba589943a59010ad227087d225",
+      "Id": "ad2c3f21381948548487b141479fac08",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "c1e3366740b744b692936e6c67f6c738",
+      "End": "11e296d5091643ea82276396f8405158",
+      "Id": "881a922538964a4f94c4a892dbf380d6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "d393fa9031a44e3d9af5f81a11916eee",
+      "End": "3236ed37595a491994c23afb923fbffe",
+      "Id": "422153a1045f44f3b46e3381ff3dbbc0",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "d393fa9031a44e3d9af5f81a11916eee",
+      "End": "220bb9ee3ca243f491e54c1a59d07a8d",
+      "Id": "ba165ab4ee8441aaa48da35c3566ef27",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2dc62b1b0a5a4f8b9e6d6986d35661bf",
+      "End": "de248610a5a54729834a75a98060a452",
+      "Id": "d214a9c75f134ff99029d8fef68548fd",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "2dc62b1b0a5a4f8b9e6d6986d35661bf",
+      "End": "a19553b9a13b45da93bf3a429f19d934",
+      "Id": "9a1fb41655884d47a0f16ae43c0d4ce6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b14f30533c2a4efd870dfde6f777c5b6",
+      "End": "f9440c71dbc3469e8e974ed5ecb8398a",
+      "Id": "c9c83661c1c24383a7723133a12ddc69",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b14f30533c2a4efd870dfde6f777c5b6",
+      "End": "f140f5f811a64b49a2b9cf2433a4ba88",
+      "Id": "10ace9ed81444ac580bf1c48eb32fc10",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "fdb8012d1ca64589a2263e307ef82c55",
+      "End": "7a78918014744fd3a634b2de35381436",
+      "Id": "8b94ef2457434e23a34c7d516cfa608d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "5b2e08a7dfbd4dc09848ea168cc19ef6",
+      "End": "b9d788fd275341de9345d1dbdfd56d10",
+      "Id": "cc29aa61f312480cb143aba69fb76470",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3462de689a71456185a3567d7ebfb724",
+      "End": "68757307fa2745df82af028b2ffaa74b",
+      "Id": "7e75a445aee34a3db03967330d3ab0d0",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "00ee7ed438384538b12735384226a985",
+      "End": "e26012b9893642bcae2c0b193e3d93ec",
+      "Id": "318249cdfa7a40409492795526881d54",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "83cc399fe3824d73bb467be048bebc1a",
+      "End": "5209b8b803e7463c933a10cab42cf181",
+      "Id": "683f6d242c744b8a950657850d54da17",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "29d8ea43d06345058ffbbc90262da64b",
+      "End": "abbc208d25b24512b5f4fb77d2136f3b",
+      "Id": "c82b718a69ab40fdaad28319a945be91",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7d177f2613324a7b835b882fe89b35b8",
+      "End": "6363c0270e654d1f9ad0e4f0170339ad",
+      "Id": "654261bfbf8f45d9a0e23273d9b263ed",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "7d177f2613324a7b835b882fe89b35b8",
+      "End": "12786611c1f04c838ccc30cc6f35fe62",
+      "Id": "e3366e425bdd41ffb3652296bf3fc530",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "9cbab9bef7e44b52977750ab4b699353",
+      "End": "57fddd10c1f84868b8ba3857d92f6882",
+      "Id": "dd367e2ab786484b863df2c61b4a087c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "0819fbae05914eada010dfe688e59184",
+      "End": "60cbde0b5a2f44c78a96aaf7d5a68abd",
+      "Id": "04df581e3b564f69a32b4d9b1bb60921",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "1097c0598c3842d9b70e09d5a0bfafe3",
+      "End": "529f0a8bfc7747f69bf9af64948e8e77",
+      "Id": "042e2256bfc64264836c1457fe8ec771",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "9faa483cdd984b978311b6f095821bfd",
+      "End": "b9abe7ee259f4b8190ff9ebb4f567b28",
+      "Id": "e95dd2a07ef2471ba19793fc5d0c4ef5",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "6761ca2eed2646a08cf72ba40b493f6b",
+      "End": "4f57ed2f786c4a999cf7a75f960cefe4",
+      "Id": "c6b3d259b2eb4d798e0cd38f258e052d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "e84fd9d46a5645569a5d8bbf55768191",
+      "End": "48970393501844eab33af153e5d2bd86",
+      "Id": "7564e1db17de4f319f344703eb6972dd",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3967c73ebc0943bd920551cb626d5b9e",
+      "End": "a13f6145142d4723921bd061709684de",
+      "Id": "d360e51c9a20417aa7be414126449760",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3967c73ebc0943bd920551cb626d5b9e",
+      "End": "1d94d99c2ec74b9abcc2238bcee9435b",
+      "Id": "990734f7152447fd9d703ce7fea6f922",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b7df1831782b41bf96e4f08a2ec3b07f",
+      "End": "0944e4af9ac24f5e9c6905d81149763c",
+      "Id": "421718369d134d9383efdde9055fc4c7",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "6df5f075f1214fc9850a5c411932fc7c",
+      "End": "9823c757bc804f21ae00e8aff3344e76",
+      "Id": "bb9002d501bb49c8805602f94de32597",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "876d4d25b6b84cd193d5e9d744796af7",
+      "End": "4cdb3b5525bb41279f6b9e1fd66083f5",
+      "Id": "cbbcfd5b0ea841b3ba72367f5930ba84",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "471b6dc69e3b421e84856815d1eaa1ad",
+      "End": "c7d430baaa39446fb8f3ec5b97e893b2",
+      "Id": "66447858cc2d495eb5cc21db3b5993b1",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "4cda2040399241e49dc7207f1e1ca600",
+      "End": "f4f1073bcb6a433aa0d7516b6cba028e",
+      "Id": "c86dc715ff664725861db5854541df2d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "139de24e943740189b6a84b752dc35b5",
+      "End": "184e8e74b0304f748c26bc706e8e6155",
+      "Id": "8a27f7bf801e4aa3b97aa3090bad04d2",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "dfcb1395602d4a3a8b675a56de1269f7",
+      "End": "335d83fc418d49549c3226037ede73aa",
+      "Id": "fe277058b00d406cac4ba945c0fd4c7c",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3e0ef1736ad64d5ea50ab849401223f9",
+      "End": "31257b2f72ac448a9a6d08cf14aca074",
+      "Id": "c8ed748a8e244fb8a074ce1351481210",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "16ca939960b34625bdcfd76605558e8f",
+      "End": "e0b734a080b848d3aa289b60bd9bccc1",
+      "Id": "ba270463e03c47ceabbd8564219d5000",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "f1de8d0821d8400a835c7234a7cc116b",
+      "End": "d5a9ad27242f436997c2f8a6c4371a06",
+      "Id": "380bd56682f64ac09e24404fe56c9424",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "6d01186f24e5423a985d9333de6cc270",
+      "End": "4b60bc0694e746e7af2294e674a7a16f",
+      "Id": "327d85788681426a8e6a0761921a3d8d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "a45686368ced4156954e4b2a6010d177",
+      "End": "dc0b9e28be794412bb32f9e91187afd0",
+      "Id": "5449faf5deb94ef080da8d7fc2ec9934",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "a019416086fa498fbeb73b37dd61e481",
+      "End": "564444a9e0414e369f37cdfc5ac3d069",
+      "Id": "39e1138739444558ba11f3c7e2dea41d",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "4f3d00d89a6f4d3e9e58149840ab2e9b",
+      "End": "0896380c64224e30b646716e46cae1f6",
+      "Id": "c93827373d7a4c5fb414c7b403ac5eb2",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "b97aed4a6b89464d96f7148e227348b4",
+      "End": "68923d97ae1a459d8c7cad7aaaa174f2",
+      "Id": "0f9691bf61e845a39ef9f259b93c7bcd",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "167415c7555444c58a206e19b59fe0cc",
+      "End": "aab61e34b1554b49b6bb47c2c41a14e6",
+      "Id": "8fd025480796469088e49d1cf5ce8357",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [
+    "6f1c4b64-0ef7-451a-a5be-526e34d565c7",
+    "7c2877c1-420f-4ba3-9ed7-292820524228",
+    "6c928bc0-9d4c-4e83-a8c4-a9302f4ab520",
+    "1dce3f92-a7f6-4f10-8b33-384ce92015dc",
+    "67fbdaa0-25cc-4f5c-91a7-263e934e71f7",
+    "3cab8fa7-8664-40f0-9534-366efbe884b7",
+    "69824e7d-ba97-4d5f-ae91-522bf95f083b",
+    "4743c784-373d-4ed2-bd25-a92e88bc49f4"
+  ],
+  "NodeLibraryDependencies": [
+    {
+      "Name": "GIS2BIM for Dynamo 2.x",
+      "Version": "0.11.24",
+      "ReferenceType": "Package",
+      "Nodes": [
+        "4b5031f2a58e4853afec15bbddcb7461",
+        "0d73ee75f4d74a5bb60ba92ba3156f29",
+        "69bdfc0f6aaa4cb68d61b39d6005983a",
+        "5c4a7a2e97b843449f6d4891b749cfd8",
+        "8a8a4e0d86da4b2dbd7cb826b8295cad",
+        "4625d047b0f5425195251dd056e191b7",
+        "3e4ecc60ff5748549dc98d2b327f5fb5",
+        "17d38745c4974e6ea3cd5c57e9663331"
+      ]
+    },
+    {
+      "Name": "FilePaths.dyf",
+      "ReferenceType": "DYFFile",
+      "Nodes": [
+        "0e4e5a1501094bedabc987b312a2f1ec",
+        "0c23ad30e517462bb422db9bdf5eba79"
+      ]
+    },
+    {
+      "Name": "SelectByName.dyf",
+      "ReferenceType": "DYFFile",
+      "Nodes": [
+        "8fe9c07230284d5e91d9ae7ba0e241ed"
+      ]
+    },
+    {
+      "Name": "google_wmts.png",
+      "ReferenceType": "External",
+      "Nodes": [
+        "8a8a4e0d86da4b2dbd7cb826b8295cad",
+        "32a31dd385524edf8ae60df9c9e6b765"
+      ]
+    },
+    {
+      "Name": "voorstraat_172_GIS_24_v2.rvt",
+      "ReferenceType": "External",
+      "Nodes": [
+        "0e4e5a1501094bedabc987b312a2f1ec"
+      ]
+    }
+  ],
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [
+    {
+      "ExtensionGuid": "28992e1d-abb9-417f-8b1b-05e053bee670",
+      "Name": "Properties",
+      "Version": "2.12",
+      "Data": {}
+    },
+    {
+      "ExtensionGuid": "DFBD9CC0-DB40-457A-939E-8C8555555A9D",
+      "Name": "Generative Design",
+      "Version": "2.0",
+      "Data": {}
+    }
+  ],
+  "Author": "None provided",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.19.3.6394",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "4b0e2acdf7094f2587ef1a0a26ea6021",
+        "Name": "Zoomlevel",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1023.8311594046568,
+        "Y": 1296.2479549441032
+      },
+      {
+        "Id": "616e3f40812b436ca8c7976fa04c7e88",
+        "Name": "Desired Width in Meters",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1516.4924780819263,
+        "Y": 1716.5798030761971
+      },
+      {
+        "Id": "4b5031f2a58e4853afec15bbddcb7461",
+        "Name": "GIS2BIM_TMS_WMTS_WebrequestAndCombineImages",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 355.76582177590262,
+        "Y": 1424.3141763191954
+      },
+      {
+        "Id": "197b5ee1b7394ad7bb0b413b4db4d458",
+        "Name": "Boolean",
+        "IsSetAsInput": true,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -72.166379535700116,
+        "Y": 1620.5679730226152
+      },
+      {
+        "Id": "0d73ee75f4d74a5bb60ba92ba3156f29",
+        "Name": "GIS2BIM.TMSWebServices",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -211.02628920505549,
+        "Y": 1265.7748123500239
+      },
+      {
+        "Id": "69bdfc0f6aaa4cb68d61b39d6005983a",
+        "Name": "GIS2BIM.TMSGetTileNumbersFromBboxLATLON",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -779.38600868605477,
+        "Y": 1486.8964287319645
+      },
+      {
+        "Id": "5c4a7a2e97b843449f6d4891b749cfd8",
+        "Name": "GIS2BIM_CreateBoundingBoxLATLONG",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1230.5550662864744,
+        "Y": 1444.7612462955126
+      },
+      {
+        "Id": "f122b43e60f940bbbaaa1b9592fc341b",
+        "Name": "Location.Longitude",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1526.1475820826104,
+        "Y": 1433.5897822242127
+      },
+      {
+        "Id": "ba1ed748675148f38f73d92da475ef68",
+        "Name": "Location.Latitude",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1519.4874218373809,
+        "Y": 1572.7445999871588
+      },
+      {
+        "Id": "15683d0de65145f699be0fc24c55215c",
+        "Name": "SiteLocation",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": -1744.5725496044113,
+        "Y": 1567.7850074109913
+      },
+      {
+        "Id": "8a8a4e0d86da4b2dbd7cb826b8295cad",
+        "Name": "GIS2BIM_ImageToFile",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2817.1050002230668,
+        "Y": 1372.67604467137
+      },
+      {
+        "Id": "ab894e63d5fe483e99b5defce073b40f",
+        "Name": "String",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2121.5415677911305,
+        "Y": 1955.1121537318147
+      },
+      {
+        "Id": "32a31dd385524edf8ae60df9c9e6b765",
+        "Name": "Code Block",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2408.5237944945538,
+        "Y": 1733.1797524020619
+      },
+      {
+        "Id": "f5a0604df35d4e4ba5c4497bd42c1113",
+        "Name": "Directory From Path",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2089.6497306350498,
+        "Y": 1676.2859226571968
+      },
+      {
+        "Id": "521aeee6ceb7411680a31a1f9f675230",
+        "Name": "downloaded image",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1620.230534928877,
+        "Y": 656.87196462671784
+      },
+      {
+        "Id": "0e4e5a1501094bedabc987b312a2f1ec",
+        "Name": "FilePaths",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1879.4240854746374,
+        "Y": 1728.1286298637503
+      },
+      {
+        "Id": "f7852642410a46f590d58296dc9417e8",
+        "Name": "String",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2170.9756010807605,
+        "Y": 1818.3996853714732
+      },
+      {
+        "Id": "e73abefd188844dab8463aeaed27629e",
+        "Name": "CropImage.py",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1575.0280737278349,
+        "Y": 1404.000123076303
+      },
+      {
+        "Id": "fd1ea34a19884c37953f1f82a756da46",
+        "Name": "Code Block",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1142.9627760420897,
+        "Y": 1424.040680405908
+      },
+      {
+        "Id": "2d56d748dbad43b3a2ecbc3cfcc2fd5e",
+        "Name": "cropped image",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2195.4033470134209,
+        "Y": 924.03266263201169
+      },
+      {
+        "Id": "7c80d5ab5d4d4a8383b4b7bddf516a26",
+        "Name": "Image.Dimensions",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 889.95349780678475,
+        "Y": 1374.895126859901
+      },
+      {
+        "Id": "4625d047b0f5425195251dd056e191b7",
+        "Name": "GIS2BIM_ImportImageInView",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 3349.9694315163197,
+        "Y": 1398.3519819789612
+      },
+      {
+        "Id": "27c43fb76ce645deb17dab7621bba39d",
+        "Name": "Views",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2490.0075051205695,
+        "Y": 2676.5401054646545
+      },
+      {
+        "Id": "3e4ecc60ff5748549dc98d2b327f5fb5",
+        "Name": "GIS2BIM_ImageToFile",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2405.7555286901393,
+        "Y": 2508.0135356644446
+      },
+      {
+        "Id": "17d38745c4974e6ea3cd5c57e9663331",
+        "Name": "GIS2BIM_ImportImageInView",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2994.5647789251334,
+        "Y": 2502.6286372696363
+      },
+      {
+        "Id": "3e24dd0de3e34891ba28e208c4d928b2",
+        "Name": "String",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1752.112486364354,
+        "Y": 2923.3889769383932
+      },
+      {
+        "Id": "958f8bba1f5648d5ad75917c57acb3f3",
+        "Name": "Code Block",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2046.6246054438839,
+        "Y": 2776.7554993697031
+      },
+      {
+        "Id": "02152e3b71c14faea11281391c94d0dc",
+        "Name": "Directory From Path",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1747.7669366337509,
+        "Y": 2775.5828732080231
+      },
+      {
+        "Id": "0c23ad30e517462bb422db9bdf5eba79",
+        "Name": "FilePaths",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": true,
+        "ShowGeometry": true,
+        "X": 1517.5248964239679,
+        "Y": 2771.7043768313933
+      },
+      {
+        "Id": "8564f1f78d624030ad181a588fdf034e",
+        "Name": "String",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 1809.0764120300937,
+        "Y": 2861.975432339113
+      },
+      {
+        "Id": "8fe9c07230284d5e91d9ae7ba0e241ed",
+        "Name": "SelectByName",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 3103.3760890510694,
+        "Y": 1538.1687752615305
+      },
+      {
+        "Id": "bc5d23ceec3445a699a9b7683ae72511",
+        "Name": "Code Block",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 2816.9999999999995,
+        "Y": 1537.1428358076428
+      }
+    ],
+    "Annotations": [
+      {
+        "Id": "a1ca10bacc8845a789becbcd7c97868d",
+        "Title": "Get FileName",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "ab894e63d5fe483e99b5defce073b40f",
+          "32a31dd385524edf8ae60df9c9e6b765",
+          "f5a0604df35d4e4ba5c4497bd42c1113",
+          "0e4e5a1501094bedabc987b312a2f1ec",
+          "f7852642410a46f590d58296dc9417e8"
+        ],
+        "HasNestedGroups": false,
+        "Left": 1869.4240854746374,
+        "Top": 1603.2859226571968,
+        "Width": 811.09970901991642,
+        "Height": 483.82623107461814,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 1676.2859226571968,
+        "InitialHeight": 423.82623107461814,
+        "TextblockHeight": 63.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "e94587e89f264c42b95207bd59fc08c3",
+        "Title": "Crop and Move Image",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "e73abefd188844dab8463aeaed27629e",
+          "fd1ea34a19884c37953f1f82a756da46",
+          "7c80d5ab5d4d4a8383b4b7bddf516a26"
+        ],
+        "HasNestedGroups": false,
+        "Left": 879.95349780678475,
+        "Top": 1301.895126859901,
+        "Width": 881.07457592105015,
+        "Height": 424.145553546007,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 1374.895126859901,
+        "InitialHeight": 194.14555354600702,
+        "TextblockHeight": 63.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "75aea4aed3d3487fb32bf9693976b183",
+        "Title": "Place Cropped Image in View",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "8a8a4e0d86da4b2dbd7cb826b8295cad",
+          "4625d047b0f5425195251dd056e191b7",
+          "8fe9c07230284d5e91d9ae7ba0e241ed",
+          "bc5d23ceec3445a699a9b7683ae72511"
+        ],
+        "HasNestedGroups": false,
+        "Left": 2806.9999999999995,
+        "Top": 1299.67604467137,
+        "Width": 852.96943151632013,
+        "Height": 370.49273059016059,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 1372.67604467137,
+        "InitialHeight": 310.49273059016059,
+        "TextblockHeight": 63.0,
+        "Background": "#FFA4E1FF"
+      },
+      {
+        "Id": "24ddb2e5268e4bcb9febcb70168a4f8a",
+        "Title": "Place Large Image in View with Offset",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "27c43fb76ce645deb17dab7621bba39d",
+          "3e4ecc60ff5748549dc98d2b327f5fb5",
+          "17d38745c4974e6ea3cd5c57e9663331"
+        ],
+        "HasNestedGroups": false,
+        "Left": 2395.7555286901393,
+        "Top": 2429.6286372696363,
+        "Width": 908.80925023499412,
+        "Height": 378.91146819501819,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 2502.6286372696363,
+        "InitialHeight": 318.91146819501819,
+        "TextblockHeight": 63.0,
+        "Background": "#FFC1D676"
+      },
+      {
+        "Id": "6e661ed6aa39478f8ed4019ced4f5cfc",
+        "Title": "Get FileName",
+        "DescriptionText": null,
+        "IsExpanded": true,
+        "WidthAdjustment": 0.0,
+        "HeightAdjustment": 0.0,
+        "Nodes": [
+          "3e24dd0de3e34891ba28e208c4d928b2",
+          "958f8bba1f5648d5ad75917c57acb3f3",
+          "02152e3b71c14faea11281391c94d0dc",
+          "0c23ad30e517462bb422db9bdf5eba79",
+          "8564f1f78d624030ad181a588fdf034e"
+        ],
+        "HasNestedGroups": false,
+        "Left": 1507.5248964239679,
+        "Top": 2698.7043768313933,
+        "Width": 811.099709019916,
+        "Height": 380.0,
+        "FontSize": 36.0,
+        "GroupStyleId": "00000000-0000-0000-0000-000000000000",
+        "InitialTop": 2771.7043768313933,
+        "InitialHeight": 296.68460010699982,
+        "TextblockHeight": 63.0,
+        "Background": "#FFC1D676"
+      }
+    ],
+    "X": 245.63795571307168,
+    "Y": 204.41609007380379,
+    "Zoom": 0.14081555743110161
+  }
+}

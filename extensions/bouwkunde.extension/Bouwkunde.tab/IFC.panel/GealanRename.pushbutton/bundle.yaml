@@ -1,0 +1,12 @@
+title: Gealan Rename
+tooltip: >
+  Hernoemt Gealan kozijn families naar K-merken.
+  
+  Workflow:
+  1. Laad kozijnen via Gealan Planersoftware
+  2. Klik 'Read K-merken' in Gealan Tools panel
+  3. Draai deze tool om types te hernoemen
+  
+  Leest mapping uit: Documents\GealanReader\mapping.txt
+author: 3BM Bouwkunde
+highlight: new
