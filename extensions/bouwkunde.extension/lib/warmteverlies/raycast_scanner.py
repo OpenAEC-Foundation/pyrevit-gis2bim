@@ -180,7 +180,42 @@ def _get_faces_from_segc(doc, room):
     faces = []
     for face in spatial_solid.Faces:
         sub_faces = seg_result.GetBoundaryFaceInfo(face)
+
+        # Fallback: horizontale faces (ceiling/floor) zonder bounding
+        # element leveren geen sub_faces. Raycast vanuit de room vindt
+        # alsnog de bovengelegen/ondergelegen constructie, maar alleen
+        # als we de face meegeven. Walls zonder sub-boundary blijven
+        # geskipt — die zijn onbetrouwbaar zonder bounding element.
         if not sub_faces or sub_faces.Count == 0:
+            try:
+                parent_area_m2 = face.Area * FEET_TO_M * FEET_TO_M
+            except Exception:
+                parent_area_m2 = 0.0
+
+            if parent_area_m2 < 0.05:
+                continue
+
+            try:
+                parent_normal = _get_face_normal(face)
+            except Exception:
+                continue
+
+            # Alleen horizontale faces (|Z| > 0.7) zonder bounding
+            # element meenemen — verticale wanden zonder bounding
+            # element zijn niet betrouwbaar genoeg om te scannen.
+            if abs(parent_normal.Z) <= 0.7:
+                continue
+
+            parent_position_type = _classify_normal(parent_normal)
+            parent_z_min_m, parent_z_max_m = _get_face_z_range(face)
+
+            faces.append({
+                "normal": parent_normal,
+                "position_type": parent_position_type,
+                "area_m2": parent_area_m2,
+                "z_min_m": parent_z_min_m,
+                "z_max_m": parent_z_max_m,
+            })
             continue
 
         for sub_face in sub_faces:
