@@ -18,6 +18,7 @@ from Autodesk.Revit.DB import (
     SpatialElementBoundaryLocation,
     ElementId,
     BuiltInCategory,
+    BuiltInParameter,
     FilteredElementCollector,
     View3D,
     UV,
@@ -68,6 +69,13 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
     except Exception:
         return result
 
+    # Phase resolution: view phase heeft voorrang, want
+    # room.CreatedPhaseId retourneert in sommige modellen
+    # ElementId.InvalidElementId (-1) terwijl rooms wel in de
+    # actieve phase bestaan. Fallbacks: room.CreatedPhaseId,
+    # laatste phase in document, anders None.
+    phase = _resolve_phase(doc, room, view3d)
+
     # Room center in feet (Revit internal)
     try:
         room_pt = room.Location.Point
@@ -103,22 +111,78 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
             _scan_wall_face(
                 doc, intersector, room_center_xy, normal,
                 z_min_m, z_max_m, area_m2, room, all_rooms,
-                result,
+                result, phase,
             )
         elif position_type == "floor":
             _scan_horizontal_face(
                 doc, intersector, room_center_xy,
                 XYZ(0.0, 0.0, -1.0), z_min_m, area_m2,
-                "floor", room, all_rooms, result,
+                "floor", room, all_rooms, result, phase,
             )
         elif position_type == "ceiling":
             _scan_horizontal_face(
                 doc, intersector, room_center_xy,
                 XYZ(0.0, 0.0, 1.0), z_max_m, area_m2,
-                "ceiling", room, all_rooms, result,
+                "ceiling", room, all_rooms, result, phase,
             )
 
     return result
+
+
+# =========================================================================
+# Phase resolution
+# =========================================================================
+
+def _resolve_phase(doc, room, view3d):
+    """Bepaal de actieve phase voor room-point lookups.
+
+    Volgorde:
+    1. View3D.VIEW_PHASE parameter
+    2. room.CreatedPhaseId (kan InvalidElementId zijn in sommige
+       modellen, dan skippen)
+    3. Laatste phase in doc.Phases
+    4. None als alles faalt
+
+    Args:
+        doc: Revit host Document
+        room: Revit Room element
+        view3d: Revit View3D element
+
+    Returns:
+        Phase object of None
+    """
+    # 1. View phase
+    try:
+        phase_param = view3d.get_Parameter(BuiltInParameter.VIEW_PHASE)
+        if phase_param is not None:
+            view_phase_id = phase_param.AsElementId()
+            if (view_phase_id is not None
+                    and view_phase_id != ElementId.InvalidElementId):
+                view_phase = doc.GetElement(view_phase_id)
+                if view_phase is not None:
+                    return view_phase
+    except Exception:
+        pass
+
+    # 2. Room created phase
+    try:
+        room_phase_id = room.CreatedPhaseId
+        if (room_phase_id is not None
+                and room_phase_id != ElementId.InvalidElementId):
+            room_phase = doc.GetElement(room_phase_id)
+            if room_phase is not None:
+                return room_phase
+    except Exception:
+        pass
+
+    # 3. Laatste phase in document
+    try:
+        if doc.Phases is not None and doc.Phases.Size > 0:
+            return doc.Phases.get_Item(doc.Phases.Size - 1)
+    except Exception:
+        pass
+
+    return None
 
 
 # =========================================================================
@@ -392,7 +456,7 @@ def _classify_normal(normal):
 
 def _scan_wall_face(doc, intersector, room_center_xy, normal,
                     z_min_m, z_max_m, face_area_m2, room,
-                    all_rooms, result):
+                    all_rooms, result, phase):
     """Scan een verticale (wand) face op meerdere hoogtes.
 
     Cast rays per RAY_HEIGHT_STEP_M hoogte, groepeert in zones en
@@ -409,6 +473,7 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
         room: Revit Room element
         all_rooms: Lijst van room data dicts
         result: Resultaat dict om aan te vullen
+        phase: Revit Phase voor GetRoomAtPoint, of None
     """
     direction = _normal_to_compass(normal)
     face_height_m = z_max_m - z_min_m
@@ -447,7 +512,8 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
         )
 
         layers, terminal = _hits_to_layer_stack(
-            hits, doc, room, all_rooms, ray_origin, ray_direction
+            hits, doc, room, all_rooms, ray_origin, ray_direction,
+            phase,
         )
         stacks_by_height[z] = (layers, terminal)
 
@@ -496,7 +562,7 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
 
 def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
                           z_m, area_m2, position_type, room,
-                          all_rooms, result):
+                          all_rooms, result, phase):
     """Scan een horizontaal vlak (vloer/plafond) met een enkele ray.
 
     Args:
@@ -510,6 +576,7 @@ def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
         room: Revit Room element
         all_rooms: Lijst van room data dicts
         result: Resultaat dict
+        phase: Revit Phase voor GetRoomAtPoint, of None
     """
     try:
         origin = XYZ(
@@ -527,7 +594,7 @@ def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
             return
 
         layers, terminal = _hits_to_layer_stack(
-            hits, doc, room, all_rooms, origin, ray_dir
+            hits, doc, room, all_rooms, origin, ray_dir, phase,
         )
 
         if position_type == "floor":
@@ -796,7 +863,7 @@ def _get_element_material_name(element, element_doc):
 # =========================================================================
 
 def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
-                         ray_direction):
+                         ray_direction, phase):
     """Converteer ray hits naar een layer stack met terminal detectie.
 
     Groepeert hits per element, berekent laagdiktes en detecteert
@@ -809,6 +876,7 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
         all_rooms: Lijst van room data dicts
         ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
         ray_direction: XYZ eenheidsvector van de ray richting
+        phase: Revit Phase voor GetRoomAtPoint, of None
 
     Returns:
         tuple: (layers_list, terminal_type_string)
@@ -897,7 +965,7 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
         if idx == len(element_order) - 1:
             terminal = _detect_terminal(
                 hit, doc, room, all_rooms, last_exit,
-                ray_origin, ray_direction
+                ray_origin, ray_direction, phase,
             )
 
     return (layers, terminal)
@@ -1041,7 +1109,7 @@ def _get_material_lambda(material, material_doc):
 # =========================================================================
 
 def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m,
-                     ray_origin, ray_direction):
+                     ray_origin, ray_direction, phase):
     """Bepaal de terminal conditie voorbij het laatste constructie-element.
 
     Checkt Toposolid materiaal keywords, dan adjacent room, dan outside.
@@ -1054,6 +1122,7 @@ def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m,
         exit_distance_m: Afstand tot exit punt in meters
         ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
         ray_direction: XYZ eenheidsvector van de ray richting
+        phase: Revit Phase voor GetRoomAtPoint, of None
 
     Returns:
         str: "water", "ground", "outside" of room element_id als int
@@ -1076,7 +1145,8 @@ def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m,
     # Check adjacent room
     try:
         adjacent_room_id = _find_room_at_exit(
-            doc, room, ray_origin, ray_direction, exit_distance_m
+            doc, room, ray_origin, ray_direction, exit_distance_m,
+            phase,
         )
         if adjacent_room_id is not None:
             return adjacent_room_id
@@ -1087,18 +1157,20 @@ def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m,
 
 
 def _find_room_at_exit(doc, current_room, ray_origin, ray_direction,
-                       exit_distance_m):
+                       exit_distance_m, phase):
     """Zoek een room voorbij het exit punt van de laag-stack.
 
     Gebruikt Document.GetRoomAtPoint op een XYZ punt net voorbij de
-    laatste hit van de ray, in dezelfde phase als de current_room.
+    laatste hit van de ray, in de meegegeven phase.
 
     Args:
         doc: Revit host Document
-        current_room: Huidige Room (voor phase + exclude)
+        current_room: Huidige Room (voor exclude)
         ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
         ray_direction: XYZ eenheidsvector van de ray richting
         exit_distance_m: Afstand van origin tot exit punt in meters
+        phase: Revit Phase object (verplicht voor GetRoomAtPoint); als
+            None dan wordt er geen lookup gedaan
 
     Returns:
         int room element_id van de gevonden room, of None
@@ -1114,22 +1186,13 @@ def _find_room_at_exit(doc, current_room, ray_origin, ray_direction,
             ray_origin.Z + ray_direction.Z * total_dist_ft,
         )
 
-        # Gebruik dezelfde phase als de current_room zodat phase-
-        # filtered rooms correct gematched worden.
-        phase = None
-        try:
-            phase_id = current_room.CreatedPhaseId
-            if (phase_id is not None
-                    and phase_id != ElementId.InvalidElementId):
-                phase = doc.GetElement(phase_id)
-        except Exception:
-            phase = None
+        # Zonder phase kunnen we geen betrouwbare lookup doen.
+        # GetRoomAtPoint zonder phase retourneert in modellen waar
+        # rooms enkel in een named phase bestaan altijd None.
+        if phase is None:
+            return None
 
-        if phase is not None:
-            found_room = doc.GetRoomAtPoint(exit_point, phase)
-        else:
-            found_room = doc.GetRoomAtPoint(exit_point)
-
+        found_room = doc.GetRoomAtPoint(exit_point, phase)
         if found_room is None:
             return None
 
