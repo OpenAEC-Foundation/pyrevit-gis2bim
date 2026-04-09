@@ -420,6 +420,13 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
     opening_hits_all = []
     empty_heights = []
 
+    # Horizontale ray richting uit face normal (identiek aan
+    # _cast_ray_at_height zodat het exit punt correct ligt)
+    try:
+        ray_direction = XYZ(normal.X, normal.Y, 0.0).Normalize()
+    except Exception:
+        ray_direction = None
+
     z = z_min_m + (RAY_HEIGHT_STEP_M / 2.0)
     while z < z_max_m:
         hits, opening_hits = _cast_ray_at_height(
@@ -432,7 +439,16 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
             z += RAY_HEIGHT_STEP_M
             continue
 
-        layers, terminal = _hits_to_layer_stack(hits, doc, room, all_rooms)
+        # Ray origin zoals gebruikt in _cast_ray_at_height
+        ray_origin = XYZ(
+            room_center_xy.X,
+            room_center_xy.Y,
+            z / FEET_TO_M,
+        )
+
+        layers, terminal = _hits_to_layer_stack(
+            hits, doc, room, all_rooms, ray_origin, ray_direction
+        )
         stacks_by_height[z] = (layers, terminal)
 
         z += RAY_HEIGHT_STEP_M
@@ -510,7 +526,9 @@ def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
         if not hits:
             return
 
-        layers, terminal = _hits_to_layer_stack(hits, doc, room, all_rooms)
+        layers, terminal = _hits_to_layer_stack(
+            hits, doc, room, all_rooms, origin, ray_dir
+        )
 
         if position_type == "floor":
             dir_str = "floor"
@@ -777,7 +795,8 @@ def _get_element_material_name(element, element_doc):
 # Layer stack building
 # =========================================================================
 
-def _hits_to_layer_stack(hits, doc, room, all_rooms):
+def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
+                         ray_direction):
     """Converteer ray hits naar een layer stack met terminal detectie.
 
     Groepeert hits per element, berekent laagdiktes en detecteert
@@ -788,6 +807,8 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms):
         doc: Revit host Document
         room: Revit Room element (voor adjacent detectie)
         all_rooms: Lijst van room data dicts
+        ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
+        ray_direction: XYZ eenheidsvector van de ray richting
 
     Returns:
         tuple: (layers_list, terminal_type_string)
@@ -875,7 +896,8 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms):
         # Terminal detectie op het laatste element
         if idx == len(element_order) - 1:
             terminal = _detect_terminal(
-                hit, doc, room, all_rooms, last_exit
+                hit, doc, room, all_rooms, last_exit,
+                ray_origin, ray_direction
             )
 
     return (layers, terminal)
@@ -1018,7 +1040,8 @@ def _get_material_lambda(material, material_doc):
 # Terminal detectie
 # =========================================================================
 
-def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m):
+def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m,
+                     ray_origin, ray_direction):
     """Bepaal de terminal conditie voorbij het laatste constructie-element.
 
     Checkt Toposolid materiaal keywords, dan adjacent room, dan outside.
@@ -1028,7 +1051,9 @@ def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m):
         doc: Revit host Document
         room: Huidige Room
         all_rooms: Alle room data dicts
-        exit_distance_m: Afstand tot exit punt
+        exit_distance_m: Afstand tot exit punt in meters
+        ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
+        ray_direction: XYZ eenheidsvector van de ray richting
 
     Returns:
         str: "water", "ground", "outside" of room element_id als int
@@ -1051,7 +1076,7 @@ def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m):
     # Check adjacent room
     try:
         adjacent_room_id = _find_room_at_exit(
-            doc, room, hit, exit_distance_m
+            doc, room, ray_origin, ray_direction, exit_distance_m
         )
         if adjacent_room_id is not None:
             return adjacent_room_id
@@ -1061,34 +1086,63 @@ def _detect_terminal(hit, doc, room, all_rooms, exit_distance_m):
     return "outside"
 
 
-def _find_room_at_exit(doc, current_room, last_hit, exit_distance_m):
-    """Zoek een room voorbij het exit punt van de constructie.
+def _find_room_at_exit(doc, current_room, ray_origin, ray_direction,
+                       exit_distance_m):
+    """Zoek een room voorbij het exit punt van de laag-stack.
+
+    Gebruikt Document.GetRoomAtPoint op een XYZ punt net voorbij de
+    laatste hit van de ray, in dezelfde phase als de current_room.
 
     Args:
         doc: Revit host Document
-        current_room: Huidige Room
-        last_hit: Laatste hit info dict
-        exit_distance_m: Exit afstand in meters
+        current_room: Huidige Room (voor phase + exclude)
+        ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
+        ray_direction: XYZ eenheidsvector van de ray richting
+        exit_distance_m: Afstand van origin tot exit punt in meters
 
     Returns:
-        int room element_id of None
+        int room element_id van de gevonden room, of None
     """
     try:
-        # Probeer via GetRoomAtPoint op een punt net voorbij exit
-        # Dit werkt alleen voor rooms in het host document
-        element = last_hit["element"]
-        if hasattr(element, "WallType"):
-            # Voor wanden: check ToRoom / FromRoom
-            to_room = element.get_Parameter(
-                BuiltInCategory.OST_Rooms
-            )
-        # GetRoomAtPoint is een methode op Document, niet direct beschikbaar
-        # in alle Revit versies via IronPython. We skippen dit voor nu
-        # en laten de terminal als "outside".
-    except Exception:
-        pass
+        # Exit punt = origin + direction * (afstand + kleine buffer)
+        # Buffer van 0.1 m voorkomt dat we precies op de face landen.
+        buffer_m = 0.1
+        total_dist_ft = (exit_distance_m + buffer_m) / FEET_TO_M
+        exit_point = XYZ(
+            ray_origin.X + ray_direction.X * total_dist_ft,
+            ray_origin.Y + ray_direction.Y * total_dist_ft,
+            ray_origin.Z + ray_direction.Z * total_dist_ft,
+        )
 
-    return None
+        # Gebruik dezelfde phase als de current_room zodat phase-
+        # filtered rooms correct gematched worden.
+        phase = None
+        try:
+            phase_id = current_room.CreatedPhaseId
+            if (phase_id is not None
+                    and phase_id != ElementId.InvalidElementId):
+                phase = doc.GetElement(phase_id)
+        except Exception:
+            phase = None
+
+        if phase is not None:
+            found_room = doc.GetRoomAtPoint(exit_point, phase)
+        else:
+            found_room = doc.GetRoomAtPoint(exit_point)
+
+        if found_room is None:
+            return None
+
+        found_id = found_room.Id.IntegerValue
+        current_id = current_room.Id.IntegerValue
+
+        # Zelfde room = geen adjacent (geen zelfgrens terugmelden)
+        if found_id == current_id:
+            return None
+
+        return found_id
+    except Exception:
+        return None
 
 
 # =========================================================================
