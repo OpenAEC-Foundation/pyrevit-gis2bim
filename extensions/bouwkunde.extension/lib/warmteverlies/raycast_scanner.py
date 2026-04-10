@@ -100,6 +100,14 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
     for rd in all_rooms:
         room_lookup[rd["element_id"]] = rd
 
+    # Bug E.4: room-wide dedupe set voor openings. SEGC splitst een
+    # woonboot-wand soms in ~9 sub-faces. Zonder een gedeelde `seen`
+    # set zou elke sub-face-call hetzelfde raam opnieuw oppikken, wat
+    # tot N-voudige aftrek en negatieve net_area leidt. Een lokale
+    # set per room is genoeg -- per room scannen we onafhankelijke
+    # boundary faces zonder overlap tussen rooms.
+    seen_openings = set()
+
     for face_info in faces:
         normal = face_info["normal"]
         position_type = face_info["position_type"]
@@ -111,7 +119,7 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
             _scan_wall_face(
                 doc, intersector, room_center_xy, normal,
                 z_min_m, z_max_m, area_m2, room, all_rooms,
-                result, phase,
+                result, phase, seen_openings,
             )
         elif position_type == "floor":
             _scan_horizontal_face(
@@ -456,7 +464,7 @@ def _classify_normal(normal):
 
 def _scan_wall_face(doc, intersector, room_center_xy, normal,
                     z_min_m, z_max_m, face_area_m2, room,
-                    all_rooms, result, phase):
+                    all_rooms, result, phase, seen_openings):
     """Scan een verticale (wand) face op meerdere hoogtes.
 
     Cast rays per RAY_HEIGHT_STEP_M hoogte, groepeert in zones en
@@ -474,6 +482,9 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
         all_rooms: Lijst van room data dicts
         result: Resultaat dict om aan te vullen
         phase: Revit Phase voor GetRoomAtPoint, of None
+        seen_openings: Set met element_id's die al in deze room zijn
+            verwerkt. Gedeeld over alle wall-faces van de room zodat
+            SEGC sub-face splitsing niet tot duplicate openings leidt.
     """
     direction = _normal_to_compass(normal)
     face_height_m = z_max_m - z_min_m
@@ -551,7 +562,7 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
 
     # Openings uit ray hits, met host-guard en z-range.
     wall_openings = _collect_openings_from_hits(
-        doc, opening_hits_all, direction
+        doc, opening_hits_all, direction, seen_openings
     )
 
     # Wijs elke opening toe aan de verticale sub-zone waarin hij valt.
@@ -1453,7 +1464,8 @@ def _normal_to_compass(normal):
 # Opening extractie uit ray hits
 # =========================================================================
 
-def _collect_openings_from_hits(doc, opening_hits, wall_direction):
+def _collect_openings_from_hits(doc, opening_hits, wall_direction,
+                                seen_openings):
     """Verzamel openings uit ray hits die in OPENING_CATEGORIES vallen.
 
     Dedupliceert sub-instances van composite window families (bv.
@@ -1461,6 +1473,13 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
     sub-elementen classificeren allemaal als OST_Windows maar hebben geen
     echte `Host` wand en zouden anders dubbel/drievoudig meetellen naast
     de parent insert.
+
+    Bug E.4: dedupe set is nu room-wide i.p.v. per-face. SEGC splitst
+    een woonboot-wand in meerdere sub-faces en elke sub-face-call gebruikte
+    voorheen een nieuwe lokale `seen` set, waardoor hetzelfde raam N keer
+    werd opgepikt. `seen_openings` wordt door de caller in
+    `scan_room_boundaries` per room aangemaakt en aan elke face-call
+    doorgegeven.
 
     Voegt per opening een z-range (`z_min_m`, `z_max_m`) toe aan de dict
     zodat de aanroeper (`_scan_wall_face`) de opening kan attribueren
@@ -1470,6 +1489,8 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
         doc: Revit host Document
         opening_hits: Lijst van opening hit dicts
         wall_direction: Kompasrichting van de wand
+        seen_openings: Set met al verwerkte element_id's (room-wide).
+            Wordt in-place bijgewerkt door deze functie.
 
     Returns:
         list of opening dicts met `z_min_m` / `z_max_m` gevuld
@@ -1477,15 +1498,13 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
     if not opening_hits:
         return []
 
-    # Deduplicate per element_id
-    seen = set()
     openings = []
 
     for hit in opening_hits:
         eid = hit["element_id"]
-        if eid in seen:
+        if eid in seen_openings:
             continue
-        seen.add(eid)
+        seen_openings.add(eid)
 
         element = hit["element"]
         element_doc = hit["element_doc"]
@@ -1522,10 +1541,15 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
 
         # Z-range van de opening bounding box (in meters). Wordt
         # gebruikt door `_assign_opening_to_zone` om de opening aan de
-        # juiste verticale sub-zone toe te wijzen. Fallback op None
-        # laat de zone-toewijzing het opening naar de eerste zone
-        # toewijzen i.p.v. weggooien.
+        # juiste verticale sub-zone toe te wijzen.
         z_min_m, z_max_m = _get_opening_z_range_m(element)
+
+        # Bug E.4: metadata voor downstream JSON builder. De builder
+        # (`thermal_json_builder._build_openings`) verwacht
+        # `revit_element_id` en `revit_type_name`; de scanner schreef
+        # voorheen `element_id` en gaf geen type-naam door, waardoor
+        # beide velden `None` bleven in de export.
+        revit_type_name = _get_opening_type_name(element, element_doc)
 
         openings.append({
             "type": opening_type,
@@ -1533,13 +1557,51 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
             "height_mm": height_mm,
             "wall_direction": wall_direction,
             "u_value": u_value,
-            "element_id": eid,
+            "revit_element_id": eid,
+            "revit_type_name": revit_type_name,
             "is_linked": hit["is_linked"],
             "z_min_m": z_min_m,
             "z_max_m": z_max_m,
         })
 
     return openings
+
+
+def _get_opening_type_name(element, element_doc):
+    """Haal de type-naam op van een opening FamilyInstance.
+
+    Zelfde format als `opening_extractor._get_type_name`:
+    "<FamilyName>: <TypeName>" met fallback op alleen FamilyName of
+    lege string bij falen. Gebruikt ALL_MODEL_TYPE_NAME builtin param
+    zodat we geen extra `Element` import nodig hebben.
+
+    Args:
+        element: Revit FamilyInstance
+        element_doc: Document van het element (host of linked)
+
+    Returns:
+        str: type-naam of lege string bij falen
+    """
+    try:
+        etype_id = element.GetTypeId()
+        if etype_id is None or etype_id == ElementId.InvalidElementId:
+            return ""
+        elem_type = element_doc.GetElement(etype_id)
+        if elem_type is None:
+            return ""
+        family_name = getattr(elem_type, "FamilyName", "") or ""
+        type_param = elem_type.get_Parameter(
+            BuiltInParameter.ALL_MODEL_TYPE_NAME
+        )
+        if type_param is not None and type_param.HasValue:
+            type_name = type_param.AsString() or ""
+            if family_name and type_name:
+                return "{0}: {1}".format(family_name, type_name)
+            if type_name:
+                return type_name
+        return family_name
+    except Exception:
+        return ""
 
 
 def _get_opening_z_range_m(element):
@@ -1573,7 +1635,14 @@ def _assign_opening_to_zone(opening, zones):
     opening `[z_min_m, z_max_m]` en de zone `[z_min, z_max]`. Valt bij
     nul overlap terug op de zone waarin het z-center van de opening
     ligt. Als ook dat niet lukt -- of de opening heeft geen z-range --
-    wordt de eerste zone gekozen (legacy gedrag).
+    wordt de zone met grootste hoogte (= dominante constructielaag)
+    gekozen.
+
+    Bug E.4: de oude legacy fallback retourneerde `0` (eerste zone), wat
+    bij woonboten de laagste zone (`z1_water_buiten_20gr`) betekent. Door
+    openings zonder z-info daar automatisch op te laten landen ontstaan
+    negatieve net_area's op de waterstrook terwijl de ramen op de gevel
+    boven water horen. Fallback op grootste zone-hoogte is veilig.
 
     Args:
         opening: opening dict met optionele `z_min_m` / `z_max_m`
@@ -1588,9 +1657,9 @@ def _assign_opening_to_zone(opening, zones):
     z_min = opening.get("z_min_m")
     z_max = opening.get("z_max_m")
 
-    # Zonder z-info: fallback op eerste zone (legacy gedrag).
+    # Zonder z-info: fallback op zone met grootste hoogte (zie docstring).
     if z_min is None or z_max is None:
-        return 0
+        return _largest_zone_index(zones)
 
     # Primair: grootste overlap in meters.
     best_idx = -1
@@ -1619,8 +1688,33 @@ def _assign_opening_to_zone(opening, zones):
         if zone_min <= z_center <= zone_max:
             return idx
 
-    # Laatste redmiddel: eerste zone.
-    return 0
+    # Laatste redmiddel: zone met grootste hoogte i.p.v. index 0.
+    return _largest_zone_index(zones)
+
+
+def _largest_zone_index(zones):
+    """Geef de index van de zone met de grootste verticale hoogte.
+
+    Gebruikt als veilige fallback voor `_assign_opening_to_zone` wanneer
+    de opening geen bruikbare z-range heeft of geen overlap met een zone
+    oplevert. De grootste zone is vrijwel altijd de dominante
+    constructielaag (bv. de hoofdgevel boven een smalle waterstrook).
+
+    Args:
+        zones: lijst zone dicts met `z_min` / `z_max` (in meters)
+
+    Returns:
+        int: index in `zones`, of 0 als alle zones hoogte 0 hebben
+    """
+    best_idx = 0
+    best_height = -1.0
+    for idx in range(len(zones)):
+        zone = zones[idx]
+        height = zone.get("z_max", 0.0) - zone.get("z_min", 0.0)
+        if height > best_height:
+            best_height = height
+            best_idx = idx
+    return best_idx
 
 
 def _get_opening_dimensions_mm(element, element_doc):
