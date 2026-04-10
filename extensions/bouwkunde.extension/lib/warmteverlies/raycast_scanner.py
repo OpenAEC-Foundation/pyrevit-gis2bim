@@ -20,6 +20,7 @@ from Autodesk.Revit.DB import (
     BuiltInCategory,
     BuiltInParameter,
     FilteredElementCollector,
+    RevitLinkInstance,
     View3D,
     UV,
 )
@@ -119,7 +120,7 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
             _scan_wall_face(
                 doc, intersector, room_center_xy, normal,
                 z_min_m, z_max_m, area_m2, room, all_rooms,
-                result, phase, seen_openings,
+                result, phase, seen_openings, view3d,
             )
         elif position_type == "floor":
             _scan_horizontal_face(
@@ -464,7 +465,7 @@ def _classify_normal(normal):
 
 def _scan_wall_face(doc, intersector, room_center_xy, normal,
                     z_min_m, z_max_m, face_area_m2, room,
-                    all_rooms, result, phase, seen_openings):
+                    all_rooms, result, phase, seen_openings, view3d):
     """Scan een verticale (wand) face op meerdere hoogtes.
 
     Cast rays per RAY_HEIGHT_STEP_M hoogte, groepeert in zones en
@@ -485,6 +486,9 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
         seen_openings: Set met element_id's die al in deze room zijn
             verwerkt. Gedeeld over alle wall-faces van de room zodat
             SEGC sub-face splitsing niet tot duplicate openings leidt.
+        view3d: Revit View3D (raycast-view). Wordt doorgegeven aan
+            `_collect_openings_from_hits` -> `_get_opening_z_range_m`
+            voor view-projected bbox van linked openings (Bug E.5b).
     """
     direction = _normal_to_compass(normal)
     face_height_m = z_max_m - z_min_m
@@ -562,7 +566,7 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
 
     # Openings uit ray hits, met host-guard en z-range.
     wall_openings = _collect_openings_from_hits(
-        doc, opening_hits_all, direction, seen_openings
+        doc, opening_hits_all, direction, seen_openings, view3d
     )
 
     # Wijs elke opening toe aan de verticale sub-zone waarin hij valt.
@@ -1465,7 +1469,7 @@ def _normal_to_compass(normal):
 # =========================================================================
 
 def _collect_openings_from_hits(doc, opening_hits, wall_direction,
-                                seen_openings):
+                                seen_openings, view3d):
     """Verzamel openings uit ray hits die in OPENING_CATEGORIES vallen.
 
     Dedupliceert sub-instances van composite window families (bv.
@@ -1481,6 +1485,11 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction,
     `scan_room_boundaries` per room aangemaakt en aan elke face-call
     doorgegeven.
 
+    Bug E.5b: de z-range lookup krijgt nu `view3d` + host-doc mee zodat
+    linked doors / curtain panels ook een bruikbare z-range terugleveren
+    (anders valt `_assign_opening_to_zone` terug op `_largest_zone_index`,
+    fout voor woonboot-gevels met waterstrook-zones).
+
     Voegt per opening een z-range (`z_min_m`, `z_max_m`) toe aan de dict
     zodat de aanroeper (`_scan_wall_face`) de opening kan attribueren
     aan de juiste verticale sub-zone.
@@ -1491,6 +1500,8 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction,
         wall_direction: Kompasrichting van de wand
         seen_openings: Set met al verwerkte element_id's (room-wide).
             Wordt in-place bijgewerkt door deze functie.
+        view3d: Revit View3D voor view-projected bbox lookup (tier 1
+            van `_get_opening_z_range_m`).
 
     Returns:
         list of opening dicts met `z_min_m` / `z_max_m` gevuld
@@ -1541,8 +1552,12 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction,
 
         # Z-range van de opening bounding box (in meters). Wordt
         # gebruikt door `_assign_opening_to_zone` om de opening aan de
-        # juiste verticale sub-zone toe te wijzen.
-        z_min_m, z_max_m = _get_opening_z_range_m(element)
+        # juiste verticale sub-zone toe te wijzen. Bug E.5b: geef
+        # view3d + host_doc door zodat linked elementen ook een
+        # bruikbare z-range teruggeven (tier 1/2 fallback).
+        z_min_m, z_max_m = _get_opening_z_range_m(
+            element, element_doc, hit["is_linked"], view3d, doc
+        )
 
         # Bug E.4: metadata voor downstream JSON builder. De builder
         # (`thermal_json_builder._build_openings`) verwacht
@@ -1604,28 +1619,136 @@ def _get_opening_type_name(element, element_doc):
         return ""
 
 
-def _get_opening_z_range_m(element):
-    """Bepaal het Z-bereik van een opening in meters.
+def _get_link_transform(host_doc, linked_doc):
+    """Vind de RevitLinkInstance die bij linked_doc hoort en geef Transform.
 
-    Leest de element bounding box in Revit internal feet en converteert
-    naar meters. Valt terug op (None, None) bij falen zodat de caller
-    weet dat er geen z-informatie is.
+    Zoekt in `host_doc` naar een `RevitLinkInstance` met een link-document
+    waarvan de `Title` overeenkomt met `linked_doc.Title` en retourneert
+    `GetTotalTransform()` zodat de caller een linked-element coordinate
+    naar host-coordinaten kan vertalen.
 
     Args:
-        element: Revit FamilyInstance (window / door)
+        host_doc: Revit host Document
+        linked_doc: Revit linked Document
+
+    Returns:
+        Transform object of None als geen match gevonden
+    """
+    if linked_doc is None or host_doc is None:
+        return None
+    try:
+        collector = FilteredElementCollector(host_doc).OfClass(
+            RevitLinkInstance
+        )
+        for link_inst in collector:
+            try:
+                ld = link_inst.GetLinkDocument()
+                if ld is not None and ld.Title == linked_doc.Title:
+                    return link_inst.GetTotalTransform()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _get_opening_z_range_m(element, element_doc, is_linked, view3d,
+                           host_doc):
+    """Robuuste Z-range extractie voor openings in host + linked context.
+
+    Bug E.5b: `element.get_BoundingBox(None)` retourneert `None` voor
+    linked doors / curtain panels, waardoor de caller terugviel op de
+    `_largest_zone_index` heuristiek -- fout voor woonboot-gevels met
+    waterstrook-zones. Drie-tier fallback:
+
+    - Tier 1: `get_BoundingBox(view3d)` -- werkt voor host + linked
+      elementen omdat de view-context de link-transform toepast.
+    - Tier 2: model-bbox + expliciete link-transform Z-offset.
+    - Tier 3: `LocationPoint` + type-height parameter (DOOR_HEIGHT etc).
+
+    Args:
+        element: Revit FamilyInstance (window / door / curtain panel)
+        element_doc: Document waarin element leeft (host of linked)
+        is_linked: True als element uit een linked model komt
+        view3d: Revit View3D voor view-projected bbox (mag None zijn)
+        host_doc: Revit host Document (voor link-transform lookup)
 
     Returns:
         tuple: (z_min_m, z_max_m) in meters, of (None, None)
     """
+    # Tier 1 -- view-projected bbox (werkt voor host + linked)
+    if view3d is not None:
+        try:
+            bb = element.get_BoundingBox(view3d)
+            if bb is not None:
+                return (bb.Min.Z * FEET_TO_M, bb.Max.Z * FEET_TO_M)
+        except Exception:
+            pass
+
+    # Tier 2 -- model bbox + link-transform Z-offset
     try:
         bb = element.get_BoundingBox(None)
-        if bb is None:
-            return (None, None)
-        z_min_m = bb.Min.Z * FEET_TO_M
-        z_max_m = bb.Max.Z * FEET_TO_M
-        return (z_min_m, z_max_m)
+        if bb is not None:
+            z_min_ft = bb.Min.Z
+            z_max_ft = bb.Max.Z
+            if is_linked and element_doc is not None and host_doc is not None:
+                link_transform = _get_link_transform(host_doc, element_doc)
+                if link_transform is not None:
+                    # Alleen Z-translatie is relevant voor heat loss zones
+                    # (links zijn meestal niet om een horizontale as
+                    # geroteerd, dus origin-Z volstaat).
+                    origin_z = link_transform.Origin.Z
+                    z_min_ft += origin_z
+                    z_max_ft += origin_z
+            return (z_min_ft * FEET_TO_M, z_max_ft * FEET_TO_M)
     except Exception:
-        return (None, None)
+        pass
+
+    # Tier 3 -- LocationPoint + type-height parameter
+    try:
+        loc = getattr(element, "Location", None)
+        if loc is not None and hasattr(loc, "Point") and loc.Point is not None:
+            z_center_ft = loc.Point.Z
+            if is_linked and element_doc is not None and host_doc is not None:
+                link_transform = _get_link_transform(host_doc, element_doc)
+                if link_transform is not None:
+                    z_center_ft += link_transform.Origin.Z
+
+            # Probeer hoogte uit type-parameters
+            h_ft = 0.0
+            try:
+                etype_id = element.GetTypeId()
+                if (etype_id is not None
+                        and etype_id != ElementId.InvalidElementId
+                        and element_doc is not None):
+                    etype = element_doc.GetElement(etype_id)
+                    if etype is not None:
+                        for bip in (
+                            BuiltInParameter.GENERIC_HEIGHT,
+                            BuiltInParameter.DOOR_HEIGHT,
+                            BuiltInParameter.WINDOW_HEIGHT,
+                            BuiltInParameter.FAMILY_HEIGHT_PARAM,
+                        ):
+                            try:
+                                p = etype.get_Parameter(bip)
+                                if p is not None and p.HasValue:
+                                    v = p.AsDouble()
+                                    if v > 0:
+                                        h_ft = v
+                                        break
+                            except Exception:
+                                continue
+            except Exception:
+                pass
+
+            if h_ft > 0:
+                z_min_m = (z_center_ft - h_ft / 2.0) * FEET_TO_M
+                z_max_m = (z_center_ft + h_ft / 2.0) * FEET_TO_M
+                return (z_min_m, z_max_m)
+    except Exception:
+        pass
+
+    return (None, None)
 
 
 def _assign_opening_to_zone(opening, zones):
