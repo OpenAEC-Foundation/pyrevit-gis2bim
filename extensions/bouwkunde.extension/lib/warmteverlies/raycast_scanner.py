@@ -549,11 +549,60 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
         }
         result["constructions"].append(construction)
 
-    # Openings uit ray hits
+    # Openings uit ray hits, met host-guard en z-range.
     wall_openings = _collect_openings_from_hits(
         doc, opening_hits_all, direction
     )
+
+    # Wijs elke opening toe aan de verticale sub-zone waarin hij valt.
+    # Dit voorkomt dat een raam op gevel-hoogte wordt afgetrokken van
+    # een smalle beton-strook onderaan de wand. Elk opening krijgt een
+    # reference naar de `layers`/`terminal_type` van de winnende zone
+    # zodat de thermal JSON builder (of backend) de opening aan de
+    # juiste geconsolideerde construction kan koppelen.
+    for opening in wall_openings:
+        zone_idx = _assign_opening_to_zone(opening, zones)
+        if zone_idx >= 0:
+            winning_zone = zones[zone_idx]
+            opening["zone_index"] = zone_idx
+            opening["zone_terminal_type"] = winning_zone.get(
+                "terminal_type", "outside"
+            )
+            opening["zone_layer_fingerprint"] = _make_zone_fingerprint(
+                winning_zone.get("layers", [])
+            )
+            opening["zone_z_min_m"] = round(
+                winning_zone.get("z_min", 0.0), 3
+            )
+            opening["zone_z_max_m"] = round(
+                winning_zone.get("z_max", 0.0), 3
+            )
+
     result["openings"].extend(wall_openings)
+
+
+def _make_zone_fingerprint(layers):
+    """Maak een stabiele fingerprint van een zone layer stack.
+
+    Gebruikt `(material, thickness_mm)` tuples zodat de downstream JSON
+    builder kan matchen op dezelfde sleutel die `_build_constructions`
+    hanteert. IronPython 2.7 tuples zijn hashable en serialiseerbaar als
+    lijst van lijsten in JSON.
+
+    Args:
+        layers: lijst van layer dicts
+
+    Returns:
+        list van [material, thickness_mm] paren
+    """
+    parts = []
+    for layer in layers or []:
+        material = layer.get("material", "")
+        if layer.get("type") == "air_gap":
+            material = "__air_gap__"
+        thickness = layer.get("thickness_mm", 0)
+        parts.append([material, thickness])
+    return parts
 
 
 # =========================================================================
@@ -1407,13 +1456,23 @@ def _normal_to_compass(normal):
 def _collect_openings_from_hits(doc, opening_hits, wall_direction):
     """Verzamel openings uit ray hits die in OPENING_CATEGORIES vallen.
 
+    Dedupliceert sub-instances van composite window families (bv.
+    `31_WI_raam_1` met genest `BU draai-val rechts` + `WI_subvak`). Die
+    sub-elementen classificeren allemaal als OST_Windows maar hebben geen
+    echte `Host` wand en zouden anders dubbel/drievoudig meetellen naast
+    de parent insert.
+
+    Voegt per opening een z-range (`z_min_m`, `z_max_m`) toe aan de dict
+    zodat de aanroeper (`_scan_wall_face`) de opening kan attribueren
+    aan de juiste verticale sub-zone.
+
     Args:
         doc: Revit host Document
         opening_hits: Lijst van opening hit dicts
         wall_direction: Kompasrichting van de wand
 
     Returns:
-        list of opening dicts
+        list of opening dicts met `z_min_m` / `z_max_m` gevuld
     """
     if not opening_hits:
         return []
@@ -1432,6 +1491,21 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
         element_doc = hit["element_doc"]
         cat_id = hit["category_id"]
 
+        # Skip sub-instances van composite window-families zonder echte
+        # Host. Dit voorkomt triple-counting bij families als
+        # `31_WI_raam_1` waarbij elk genest sub-element ook als een
+        # OST_Windows family instance terugkomt uit de ray hits. Zelfde
+        # guard als in `opening_extractor.extract_openings`.
+        try:
+            host = getattr(element, "Host", None)
+            if host is None:
+                continue
+            host_id = host.Id.IntegerValue
+            if host_id <= 0:
+                continue
+        except Exception:
+            continue
+
         # Classificeer type
         if cat_id in OPENING_CATEGORIES:
             opening_type = OPENING_CATEGORIES[cat_id]
@@ -1446,6 +1520,13 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
         # U-waarde
         u_value = _get_opening_u_value(element, element_doc, opening_type)
 
+        # Z-range van de opening bounding box (in meters). Wordt
+        # gebruikt door `_assign_opening_to_zone` om de opening aan de
+        # juiste verticale sub-zone toe te wijzen. Fallback op None
+        # laat de zone-toewijzing het opening naar de eerste zone
+        # toewijzen i.p.v. weggooien.
+        z_min_m, z_max_m = _get_opening_z_range_m(element)
+
         openings.append({
             "type": opening_type,
             "width_mm": width_mm,
@@ -1454,9 +1535,92 @@ def _collect_openings_from_hits(doc, opening_hits, wall_direction):
             "u_value": u_value,
             "element_id": eid,
             "is_linked": hit["is_linked"],
+            "z_min_m": z_min_m,
+            "z_max_m": z_max_m,
         })
 
     return openings
+
+
+def _get_opening_z_range_m(element):
+    """Bepaal het Z-bereik van een opening in meters.
+
+    Leest de element bounding box in Revit internal feet en converteert
+    naar meters. Valt terug op (None, None) bij falen zodat de caller
+    weet dat er geen z-informatie is.
+
+    Args:
+        element: Revit FamilyInstance (window / door)
+
+    Returns:
+        tuple: (z_min_m, z_max_m) in meters, of (None, None)
+    """
+    try:
+        bb = element.get_BoundingBox(None)
+        if bb is None:
+            return (None, None)
+        z_min_m = bb.Min.Z * FEET_TO_M
+        z_max_m = bb.Max.Z * FEET_TO_M
+        return (z_min_m, z_max_m)
+    except Exception:
+        return (None, None)
+
+
+def _assign_opening_to_zone(opening, zones):
+    """Bepaal in welke verticale sub-zone een opening thuis hoort.
+
+    De toewijzing gebruikt de grootste verticale overlap tussen de
+    opening `[z_min_m, z_max_m]` en de zone `[z_min, z_max]`. Valt bij
+    nul overlap terug op de zone waarin het z-center van de opening
+    ligt. Als ook dat niet lukt -- of de opening heeft geen z-range --
+    wordt de eerste zone gekozen (legacy gedrag).
+
+    Args:
+        opening: opening dict met optionele `z_min_m` / `z_max_m`
+        zones: lijst zone dicts met `z_min` / `z_max` (in meters)
+
+    Returns:
+        int: index in `zones`, of -1 als er geen zones zijn
+    """
+    if not zones:
+        return -1
+
+    z_min = opening.get("z_min_m")
+    z_max = opening.get("z_max_m")
+
+    # Zonder z-info: fallback op eerste zone (legacy gedrag).
+    if z_min is None or z_max is None:
+        return 0
+
+    # Primair: grootste overlap in meters.
+    best_idx = -1
+    best_overlap = 0.0
+
+    for idx, zone in enumerate(zones):
+        zone_min = zone.get("z_min", 0.0)
+        zone_max = zone.get("z_max", 0.0)
+
+        overlap_lo = z_min if z_min > zone_min else zone_min
+        overlap_hi = z_max if z_max < zone_max else zone_max
+        overlap = overlap_hi - overlap_lo
+
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_idx = idx
+
+    if best_idx >= 0:
+        return best_idx
+
+    # Fallback: zone die het z-center van de opening bevat.
+    z_center = (z_min + z_max) / 2.0
+    for idx, zone in enumerate(zones):
+        zone_min = zone.get("z_min", 0.0)
+        zone_max = zone.get("z_max", 0.0)
+        if zone_min <= z_center <= zone_max:
+            return idx
+
+    # Laatste redmiddel: eerste zone.
+    return 0
 
 
 def _get_opening_dimensions_mm(element, element_doc):

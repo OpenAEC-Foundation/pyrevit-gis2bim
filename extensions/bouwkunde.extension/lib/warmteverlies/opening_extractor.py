@@ -42,6 +42,18 @@ def extract_openings(doc, wall, element_doc=None):
         if element is None:
             continue
 
+        # Skip sub-instances van composite window-families (bv. 31_WI_raam_1
+        # met nested BU draai-val / WI_subvak). Die hebben geen echte Host
+        # en zouden anders dubbel/drievoudig meetellen naast de parent.
+        try:
+            host = getattr(element, "Host", None)
+            if host is None:
+                continue
+            if host.Id.IntegerValue <= 0:
+                continue
+        except Exception:
+            continue
+
         category = _classify_opening(element)
         if category is None:
             continue
