@@ -86,14 +86,17 @@ def build_thermal_import(project_name, rooms_data, scan_results):
     # Stap 2: bouw rooms (schema-conform)
     rooms = _build_rooms(rooms_data, scan_results, room_id_map)
 
-    # Stap 3: bouw constructies met consolidatie
-    constructions = _build_constructions(
+    # Stap 3: bouw constructies met consolidatie. Geeft ook een
+    # fingerprint_index terug voor de opening-to-zone lookup in stap 4.
+    constructions, fingerprint_index = _build_constructions(
         rooms_data, scan_results, room_id_map
     )
 
-    # Stap 4: bouw openings (verwijst naar geconsolideerde construction IDs)
+    # Stap 4: bouw openings (verwijst naar geconsolideerde construction IDs).
+    # Gebruikt fingerprint_index voor correcte sub-zone toewijzing (Bug E.3).
     openings = _build_openings(
-        rooms_data, scan_results, constructions, room_id_map
+        rooms_data, scan_results, constructions, fingerprint_index,
+        room_id_map
     )
 
     # Stap 5: bouw open connections
@@ -238,18 +241,50 @@ def _resolve_room_b(terminal_type, room_id_map):
 def _make_layer_fingerprint(layers):
     """Maak een hashbare fingerprint van een laagopbouw.
 
+    Canonicaliseert air_gap lagen met `__air_gap__` marker zodat deze
+    fingerprint matcht met `_make_zone_fingerprint` uit raycast_scanner.
+    Dit is kritisch voor de opening-to-zone lookup in `_build_openings`
+    (Bug E.3): zonder deze canonicalisatie hebben builder en scanner
+    verschillende fingerprints voor dezelfde zone met air-gap lagen,
+    waardoor openings op de verkeerde sub-zone worden geplaatst.
+
     Args:
         layers: Lijst van layer dicts (van binnen naar buiten)
 
     Returns:
-        tuple: ((material, thickness_mm), ...) gesorteerd van binnen naar buiten
+        tuple: ((material, thickness_mm), ...) gesorteerd van binnen
+            naar buiten. Voor air_gap lagen is material `"__air_gap__"`.
     """
     parts = []
     for layer in layers:
-        material = layer.get("material", "")
+        if layer.get("type") == "air_gap":
+            material = "__air_gap__"
+        else:
+            material = layer.get("material", "")
         thickness = layer.get("thickness_mm", 0)
         parts.append((material, thickness))
     return tuple(parts)
+
+
+def _normalize_fingerprint(fp):
+    """Normaliseer een fingerprint tot hashable tuple of tuples.
+
+    De scanner zet `zone_layer_fingerprint` op openings als een
+    `list of [material, thickness_mm]` (JSON-vriendelijk), terwijl
+    de builder `tuple of (material, thickness_mm)` gebruikt (hashable
+    voor dict keys). Deze helper normaliseert beide formats tot een
+    tuple-of-tuples zodat ze als dict key bruikbaar zijn.
+
+    Args:
+        fp: fingerprint in list-of-lists of tuple-of-tuples format,
+            of None
+
+    Returns:
+        tuple of tuples, of None als input None is
+    """
+    if fp is None:
+        return None
+    return tuple(tuple(pair) for pair in fp)
 
 
 def _convert_layers(raw_layers):
@@ -308,7 +343,12 @@ def _build_constructions(rooms_data, scan_results, room_id_map):
         room_id_map: Mapping intern ID -> schema ID
 
     Returns:
-        list: Geconsolideerde construction dicts conform schema
+        tuple: (constructions, fingerprint_index)
+            - constructions: lijst van schema-conforme construction dicts
+            - fingerprint_index: dict met key
+              `(room_a, compass, layer_fingerprint)` -> construction_id.
+              Gebruikt door `_build_openings` om openings aan de juiste
+              verticale sub-zone te koppelen (Bug E.3 fix).
     """
     # Fase 1: Verzamel alle ruwe constructies
     raw_constructions = []
@@ -381,6 +421,7 @@ def _build_constructions(rooms_data, scan_results, room_id_map):
                 "compass": raw["compass"],
                 "total_area": 0.0,
                 "layers": raw["layers"],
+                "layer_fingerprint": raw["layer_fingerprint"],
                 "revit_element_id": raw["revit_element_id"],
                 "revit_type_name": raw["revit_type_name"],
             }
@@ -392,6 +433,11 @@ def _build_constructions(rooms_data, scan_results, room_id_map):
 
     # Fase 3: Filter en bouw schema-conforme output
     constructions = []
+    # Secundaire index: (room_a, compass, layer_fingerprint) -> construction_id
+    # Gebruikt door `_build_openings` om openings aan de juiste verticale
+    # sub-zone te koppelen (Bug E.3 fix). De fingerprint matcht met
+    # `zone_layer_fingerprint` op opening dicts uit raycast_scanner.
+    fingerprint_index = {}
     counter = 0
 
     # Sorteer voor deterministische output
@@ -416,8 +462,9 @@ def _build_constructions(rooms_data, scan_results, room_id_map):
         }
 
         # Compass alleen toevoegen voor walls (en alleen als bekend)
-        if group["compass"] is not None:
-            construction["compass"] = group["compass"]
+        compass = group.get("compass")
+        if compass is not None:
+            construction["compass"] = compass
 
         # Revit metadata
         if group["revit_element_id"] is not None:
@@ -430,22 +477,42 @@ def _build_constructions(rooms_data, scan_results, room_id_map):
             construction["layers"] = group["layers"]
 
         constructions.append(construction)
+
+        # Registreer in fingerprint index (voor opening lookup)
+        layer_fp = group.get("layer_fingerprint")
+        if layer_fp is not None:
+            fp_key = (group["room_a"], compass or "", layer_fp)
+            # Eerste match wint (deterministisch door sorted_keys)
+            if fp_key not in fingerprint_index:
+                fingerprint_index[fp_key] = c_id
+
         counter += 1
 
-    return constructions
+    return constructions, fingerprint_index
 
 
 def _build_openings(rooms_data, scan_results, constructions_list,
-                    room_id_map):
+                    fingerprint_index, room_id_map):
     """Bouw opening array conform schema.
 
-    Koppelt elke opening aan een parent constructie op basis van
-    room_a + compass/orientation match.
+    Koppelt elke opening aan een parent constructie via een 3-staps
+    lookup:
+
+    1. **Primair** — `(room_a, compass, zone_layer_fingerprint)` match
+       via `fingerprint_index` uit `_build_constructions`. Dit plaatst
+       een opening correct op de verticale sub-zone (bijv. gevel ipv
+       betonstrip) wanneer een muur meerdere layer-stacks heeft (Bug
+       E.3 fix).
+    2. **Fallback** — `(room_a, compass)` eerste match. Legacy gedrag
+       voor openings zonder `zone_layer_fingerprint` metadata.
+    3. **Laatste redmiddel** — `(room_a, orientation="wall")` match.
 
     Args:
         rooms_data: Lijst van room dicts
         scan_results: Scan resultaten per room element_id
         constructions_list: Eerder gebouwde construction dicts
+        fingerprint_index: dict `(room_a, compass, fp) -> construction_id`
+            uit `_build_constructions`
         room_id_map: Mapping intern ID -> schema ID
 
     Returns:
@@ -483,10 +550,25 @@ def _build_openings(rooms_data, scan_results, constructions_list,
             # Construction ID lookup via compass richting
             wall_direction = opening.get("wall_direction", "")
             compass = wall_direction.upper() if wall_direction else ""
-            lookup_key = (room_a, compass)
-            construction_id = constr_by_room_compass.get(lookup_key, "")
 
-            # Fallback: zoek op orientation "wall"
+            construction_id = ""
+
+            # Primair: fingerprint-based lookup (Bug E.3 fix).
+            # Plaatst de opening op de juiste verticale sub-zone.
+            zone_fp = opening.get("zone_layer_fingerprint")
+            if zone_fp is not None:
+                normalized_fp = _normalize_fingerprint(zone_fp)
+                fp_key = (room_a, compass, normalized_fp)
+                construction_id = fingerprint_index.get(fp_key, "")
+
+            # Fallback: eerste match op (room_a, compass)
+            if not construction_id:
+                lookup_key = (room_a, compass)
+                construction_id = constr_by_room_compass.get(
+                    lookup_key, ""
+                )
+
+            # Laatste redmiddel: zoek op orientation "wall"
             if not construction_id:
                 fallback_key = (room_a, "wall")
                 construction_id = constr_by_room_orient.get(
