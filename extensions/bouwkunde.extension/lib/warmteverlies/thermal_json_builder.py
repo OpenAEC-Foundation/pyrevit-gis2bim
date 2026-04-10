@@ -491,6 +491,54 @@ def _build_constructions(rooms_data, scan_results, room_id_map):
     return constructions, fingerprint_index
 
 
+def _build_heated_room_lookup(rooms_data, room_id_map):
+    """Bouw een mapping van schema_room_id -> is_heated (bool).
+
+    Gebruikt voor Bug E.5c: interne deuren tussen twee verwarmde
+    ruimtes moeten uit de opening-export worden gefilterd.
+
+    Fallback-logica voor onbekende/ontbrekende `is_heated`:
+    - Pseudo-rooms (`room-outside`, `room-water`, `room-ground`) zijn
+      per definitie unheated (exterieur).
+    - Ruimtes met naam `"Buiten"` of schema id `"room-outside"` zijn
+      unheated.
+    - Default voor 'echte' rooms zonder `is_heated`-veld: heated
+      (consistent met bestaand patroon `room_data.get("is_heated", True)`
+      elders in dit bestand).
+
+    Args:
+        rooms_data: Lijst van room dicts
+        room_id_map: Mapping intern ID -> schema ID
+
+    Returns:
+        dict: {schema_room_id: bool}
+    """
+    heated_map = {}
+
+    for room_data in rooms_data:
+        intern_id = generate_room_id(room_data, rooms_data)
+        schema_id = room_id_map.get(intern_id)
+        if schema_id is None:
+            continue
+
+        raw = room_data.get("is_heated")
+        if raw is None:
+            # Fallback: naam "Buiten" of schema id room-outside = unheated
+            name = (room_data.get("name") or "").strip().lower()
+            if name == "buiten" or schema_id == "room-outside":
+                heated_map[schema_id] = False
+            else:
+                heated_map[schema_id] = True
+        else:
+            heated_map[schema_id] = bool(raw)
+
+    # Pseudo-rooms zijn altijd unheated (outside, water, ground)
+    for pseudo_key in TERMINAL_PSEUDO_TYPES:
+        heated_map["room-{0}".format(pseudo_key)] = False
+
+    return heated_map
+
+
 def _build_openings(rooms_data, scan_results, constructions_list,
                     fingerprint_index, room_id_map):
     """Bouw opening array conform schema.
@@ -507,6 +555,11 @@ def _build_openings(rooms_data, scan_results, constructions_list,
        voor openings zonder `zone_layer_fingerprint` metadata.
     3. **Laatste redmiddel** — `(room_a, orientation="wall")` match.
 
+    Filter (Bug E.5c): openings waarbij zowel `room_a` als `room_b`
+    heated zijn worden gedropt. Voor NEN-EN 12831 / ISSO 51 zijn enkel
+    openings naar buiten of naar koudere ruimtes relevant. Binnendeuren
+    tussen verwarmde ruimtes dragen niet bij aan het warmteverlies.
+
     Args:
         rooms_data: Lijst van room dicts
         scan_results: Scan resultaten per room element_id
@@ -520,6 +573,7 @@ def _build_openings(rooms_data, scan_results, constructions_list,
     """
     openings = []
     counter = 0
+    skipped_internal = 0
 
     # Index: (room_a, compass) -> construction_id voor snelle lookup
     constr_by_room_compass = {}
@@ -534,6 +588,17 @@ def _build_openings(rooms_data, scan_results, constructions_list,
         key = (c["room_a"], c.get("orientation", ""))
         if key not in constr_by_room_orient:
             constr_by_room_orient[key] = c["id"]
+
+    # Index: construction_id -> (room_a, room_b) voor E.5c filter
+    constr_rooms_by_id = {}
+    for c in constructions_list:
+        constr_rooms_by_id[c["id"]] = (
+            c.get("room_a", ""),
+            c.get("room_b", ""),
+        )
+
+    # Heated lookup (E.5c): schema_room_id -> bool
+    heated_by_room = _build_heated_room_lookup(rooms_data, room_id_map)
 
     for room_data in rooms_data:
         if not room_data.get("is_heated", True):
@@ -575,6 +640,25 @@ def _build_openings(rooms_data, scan_results, constructions_list,
                     fallback_key, ""
                 )
 
+            # E.5c filter: skip als BEIDE kanten van de parent
+            # construction heated zijn (interne deur tussen twee
+            # verwarmde ruimtes draagt niet bij aan warmteverlies).
+            if construction_id:
+                rooms_ab = constr_rooms_by_id.get(construction_id)
+                if rooms_ab is not None:
+                    ra_id, rb_id = rooms_ab
+                    # Default True voor onbekende rooms (veilig:
+                    # niet-skippen bij twijfel zou dubbeltelling
+                    # geven, maar heated_by_room bevat alle bekende
+                    # rooms; onbekende = niet in map = default False
+                    # zodat we alleen met ZEKERHEID heated rooms
+                    # filteren).
+                    ra_heated = heated_by_room.get(ra_id, False)
+                    rb_heated = heated_by_room.get(rb_id, False)
+                    if ra_heated and rb_heated:
+                        skipped_internal += 1
+                        continue
+
             opening_dict = {
                 "id": o_id,
                 "construction_id": construction_id,
@@ -602,6 +686,14 @@ def _build_openings(rooms_data, scan_results, constructions_list,
 
             openings.append(opening_dict)
             counter += 1
+
+    if skipped_internal > 0:
+        # Builder is een lib-module zonder eigen logger; print wordt
+        # door pyRevit script.output opgevangen en ook in journal.
+        print(
+            "[thermal_json_builder] E.5c: {0} interne opening(en) "
+            "geskipt (beide zijden verwarmd)".format(skipped_internal)
+        )
 
     return openings
 
