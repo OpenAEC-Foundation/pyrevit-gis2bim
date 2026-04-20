@@ -8,7 +8,7 @@ voor warmteverlies.open-aec.com/import/thermal.
 IronPython 2.7 -- geen f-strings, geen type hints.
 """
 
-__title__ = "Raycast\nExport"
+__title__ = "Warmteverlies\nExport"
 __author__ = "3BM Bouwkunde"
 __doc__ = "Exporteer thermische schil (raycast) naar JSON voor warmteverlies import"
 

@@ -1,0 +1,6 @@
+title: Aantallen\nTellen
+tooltip: >-
+  Telt kozijnen per type en bepaalt spiegeling (Left/Right/LhR/RhR).
+  Schrijft 'aantal' en 'aantal_gespiegeld' parameters op family types.
+author: 3BM Bouwkunde
+highlight: new

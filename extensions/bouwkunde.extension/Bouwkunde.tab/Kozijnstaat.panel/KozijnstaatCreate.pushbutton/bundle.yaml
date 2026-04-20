@@ -1,0 +1,7 @@
+title: Create\nKozijnstaat
+tooltip: >-
+  Plaatst alle unieke kozijn-types op een grid-layout (6x8). Gebruikt
+  een bestaande wand of genereert een canvas-wall. Plaatst tevens tags
+  onder elk kozijn.
+author: 3BM Bouwkunde
+highlight: new
