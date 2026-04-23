@@ -127,3 +127,8 @@ IGNORE_CATEGORIES = {          # Categorieen die gefilterd worden uit ray hits
 }
 WATER_MATERIAL_KEYWORDS = ["water", "meer", "rivier", "zee"]
 GROUND_MATERIAL_KEYWORDS = ["grond", "earth", "soil", "klei", "zand", "topo"]
+
+# =============================================================================
+# Debug flags
+# =============================================================================
+DEBUG_OPENINGS = False            # Log opening detection per boundary wall

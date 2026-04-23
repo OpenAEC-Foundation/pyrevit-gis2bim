@@ -36,6 +36,7 @@ from warmteverlies.constants import (
     IGNORE_CATEGORIES,
     WATER_MATERIAL_KEYWORDS,
     GROUND_MATERIAL_KEYWORDS,
+    DEBUG_OPENINGS,
 )
 from warmteverlies.unit_utils import internal_to_meters, internal_to_mm
 
@@ -534,11 +535,15 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
 
         z += RAY_HEIGHT_STEP_M
 
-    # Detecteer open connections (grote lege gebieden)
-    open_conns = _detect_open_connections(
-        empty_heights, z_min_m, z_max_m, direction
-    )
-    result["open_connections"].extend(open_conns)
+    # _detect_open_connections gedeactiveerd sinds Bug F fix (Optie C hybride):
+    # openings komen nu via Wall.FindInserts() met curtain-panel expansion.
+    # De legacy raycast-empty-heights detectie dupliceert + dubbeltelt.
+    # Behoud voor referentie, activeer opnieuw alleen als er rooms zijn zonder
+    # FindInserts-dekking (bv open doorgangen ZONDER wall-element).
+    # open_conns = _detect_open_connections(
+    #     empty_heights, z_min_m, z_max_m, direction
+    # )
+    # result["open_connections"].extend(open_conns)
 
     if not stacks_by_height:
         return
@@ -564,9 +569,10 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
         }
         result["constructions"].append(construction)
 
-    # Openings uit ray hits, met host-guard en z-range.
-    wall_openings = _collect_openings_from_hits(
-        doc, opening_hits_all, direction, seen_openings, view3d
+    # Openings via Wall.FindInserts() (hybride optie C - Bug F fix)
+    wall_openings = _collect_openings_from_boundary_walls(
+        doc, room, normal, z_min_m, z_max_m, direction,
+        seen_openings, view3d, face_area_m2
     )
 
     # Wijs elke opening toe aan de verticale sub-zone waarin hij valt.
@@ -1465,7 +1471,501 @@ def _normal_to_compass(normal):
 
 
 # =========================================================================
-# Opening extractie uit ray hits
+# Opening extractie via Wall.FindInserts() (Bug F fix - hybride optie C)
+# =========================================================================
+
+def _collect_openings_from_boundary_walls(doc, room, face_normal, z_min_m,
+                                          z_max_m, wall_direction,
+                                          seen_openings, view3d,
+                                          face_area_m2):
+    """Verzamel openings via Wall.FindInserts() voor boundary walls.
+
+    Bug F fix: vervang raycast-gebaseerde opening detectie door Wall.FindInserts()
+    om multi-panel curtain walls en geroteerde wanden volledig te scannen.
+    Raycast mist openings buiten de ene ray-lijn, FindInserts vindt alle inserts.
+
+    NOTE: DEBUG_OPENINGS=True bypasst overlap-filter voor diagnose.
+
+    Args:
+        doc: Revit host Document
+        room: Revit Room element
+        face_normal: XYZ normale vector van de boundary face
+        z_min_m: Onderkant face in meters
+        z_max_m: Bovenkant face in meters
+        wall_direction: Kompasrichting string ("N", "E", etc.)
+        seen_openings: Set met element_id's die al verwerkt zijn (room-wide)
+        view3d: Revit View3D voor z-range bepaling
+        face_area_m2: Oppervlak van de boundary face voor filter
+
+    Returns:
+        list: opening dicts compatible met downstream zone assignment
+    """
+    openings = []
+
+    # Vind alle walls die bijdragen aan deze room boundary via SEGC
+    boundary_walls = _find_boundary_walls_for_face(
+        doc, room, face_normal, z_min_m, z_max_m
+    )
+
+    if DEBUG_OPENINGS:
+        print("DEBUG_OPENINGS: room {} direction {} found {} boundary walls".format(
+            room.Id.IntegerValue, wall_direction, len(boundary_walls)
+        ))
+        wall_ids = [wi["wall"].Id.IntegerValue for wi in boundary_walls]
+        linked_flags = [wi["is_linked"] for wi in boundary_walls]
+        print("  wall_ids={} linked={}".format(wall_ids, linked_flags))
+
+    for wall_info in boundary_walls:
+        wall = wall_info["wall"]
+        wall_doc = wall_info["wall_doc"]
+        is_linked = wall_info["is_linked"]
+
+        if DEBUG_OPENINGS:
+            wall_cls = type(wall).__name__
+            wall_cat = "unknown"
+            try:
+                if wall.Category is not None:
+                    wall_cat = wall.Category.Name
+            except:
+                pass
+            wall_kind = "unknown"
+            try:
+                wall_kind = str(wall.WallType.Kind) if hasattr(wall, "WallType") and wall.WallType is not None else "no-WallType"
+            except:
+                wall_kind = "kind-error"
+            print("  Wall {} class={} cat={} kind={} linked={}".format(
+                wall.Id.IntegerValue, wall_cls, wall_cat, wall_kind, is_linked
+            ))
+
+        # FindInserts met correcte parameters voor alle opening types
+        try:
+            # FindInserts(includeShadows, includeEmbeddedWalls,
+            #             includeSharedEmbeddedInserts, includeWallOpenings)
+            # IronPython 2.7 kan kwargs niet resolven op .NET overloads → positional.
+            insert_ids = wall.FindInserts(False, True, False, True)
+        except Exception as ex:
+            if DEBUG_OPENINGS:
+                print("    FindInserts EXCEPTION on Wall {}: {}".format(
+                    wall.Id.IntegerValue, str(ex)
+                ))
+            continue
+
+        if not insert_ids or insert_ids.Count == 0:
+            if DEBUG_OPENINGS:
+                print("  Wall {} has 0 inserts".format(wall.Id.IntegerValue))
+            continue
+
+        if DEBUG_OPENINGS:
+            print("  Wall {} has {} inserts".format(
+                wall.Id.IntegerValue, insert_ids.Count
+            ))
+
+        # Process elke insert
+        for insert_id in insert_ids:
+            element_id_int = insert_id.IntegerValue
+
+            # Dedupe check (room-wide)
+            if element_id_int in seen_openings:
+                if DEBUG_OPENINGS:
+                    print("    insert {} DROP seen".format(element_id_int))
+                continue
+            seen_openings.add(element_id_int)
+
+            element = wall_doc.GetElement(insert_id)
+            if element is None:
+                if DEBUG_OPENINGS:
+                    print("    insert {} DROP GetElement=None".format(element_id_int))
+                continue
+
+            # Host guard (zelfde logica als raycast variant)
+            try:
+                host = getattr(element, "Host", None)
+                if host is None or host.Id.IntegerValue <= 0:
+                    if DEBUG_OPENINGS:
+                        print("    insert {} DROP no-host".format(element_id_int))
+                    continue
+            except Exception:
+                if DEBUG_OPENINGS:
+                    print("    insert {} DROP no-host".format(element_id_int))
+                continue
+
+            # Embedded curtain wall → expandeer naar individuele panels
+            is_embedded_wall = False
+            try:
+                if element.Category is not None and element.Category.Id.IntegerValue == -2000011:
+                    is_embedded_wall = True
+            except Exception:
+                pass
+
+            if is_embedded_wall:
+                # Check of het een curtain wall is (heeft CurtainGrid)
+                curtain_grid = None
+                try:
+                    curtain_grid = element.CurtainGrid
+                except Exception:
+                    curtain_grid = None
+
+                if curtain_grid is not None:
+                    try:
+                        panel_ids = curtain_grid.GetPanelIds()
+                    except Exception:
+                        panel_ids = []
+
+                    if DEBUG_OPENINGS:
+                        print("    insert {} EXPAND curtain grid -> {} panels".format(
+                            element_id_int, len(panel_ids)
+                        ))
+
+                    for panel_id in panel_ids:
+                        panel_int_id = panel_id.IntegerValue
+                        if panel_int_id in seen_openings:
+                            if DEBUG_OPENINGS:
+                                print("      panel {} DROP seen".format(panel_int_id))
+                            continue
+                        seen_openings.add(panel_int_id)
+
+                        panel = wall_doc.GetElement(panel_id)
+                        if panel is None:
+                            if DEBUG_OPENINGS:
+                                print("      panel {} DROP GetElement=None".format(panel_int_id))
+                            continue
+
+                        panel_type = _classify_insert_opening_type(panel)
+                        if panel_type is None:
+                            if DEBUG_OPENINGS:
+                                # Log category name for diagnosis
+                                cat_name = "unknown"
+                                try:
+                                    if panel.Category is not None:
+                                        cat_name = panel.Category.Name
+                                except:
+                                    pass
+                                print("      panel {} DROP classify=None cat={}".format(
+                                    panel_int_id, cat_name
+                                ))
+                            continue
+
+                        p_width_mm, p_height_mm = _get_opening_dimensions_mm(panel, wall_doc)
+                        p_u_value = _get_opening_u_value(panel, wall_doc, panel_type)
+                        p_z_min_m, p_z_max_m = _get_opening_z_range_m(
+                            panel, wall_doc, is_linked, view3d, doc
+                        )
+                        p_revit_type_name = _get_opening_type_name(panel, wall_doc)
+
+                        if DEBUG_OPENINGS:
+                            print("      panel {} KEEP type={} dims={}x{}".format(
+                                panel_int_id, panel_type, p_width_mm, p_height_mm
+                            ))
+
+                        openings.append({
+                            "type": panel_type,
+                            "width_mm": p_width_mm,
+                            "height_mm": p_height_mm,
+                            "wall_direction": wall_direction,
+                            "u_value": p_u_value,
+                            "revit_element_id": panel_int_id,
+                            "revit_type_name": p_revit_type_name,
+                            "is_linked": is_linked,
+                            "z_min_m": p_z_min_m,
+                            "z_max_m": p_z_max_m,
+                        })
+
+                    continue  # skip de normale insert-processing voor de curtain-wall-host zelf
+                else:
+                    # Embedded wall zonder curtain grid → geen opening, skip
+                    if DEBUG_OPENINGS:
+                        print("    insert {} DROP embedded-wall (no curtain grid)".format(
+                            element_id_int
+                        ))
+                    continue
+
+            # Geometric relevantie: alleen inserts binnen face bbox
+            if not _insert_overlaps_face(element, wall_doc, is_linked,
+                                       face_normal, z_min_m, z_max_m,
+                                       face_area_m2, view3d, doc):
+                if DEBUG_OPENINGS:
+                    print("    insert {} DROP overlaps=False".format(element_id_int))
+                continue
+
+            # Extract opening properties
+            opening_type = _classify_insert_opening_type(element)
+            if opening_type is None:
+                if DEBUG_OPENINGS:
+                    cat_name = "unknown"
+                    try:
+                        if element.Category is not None:
+                            cat_name = element.Category.Name
+                    except:
+                        pass
+                    print("    insert {} DROP classify=None cat={}".format(
+                        element_id_int, cat_name
+                    ))
+                continue
+
+            width_mm, height_mm = _get_opening_dimensions_mm(element, wall_doc)
+            u_value = _get_opening_u_value(element, wall_doc, opening_type)
+
+            # Z-range voor zone assignment
+            z_min_opening_m, z_max_opening_m = _get_opening_z_range_m(
+                element, wall_doc, is_linked, view3d, doc
+            )
+
+            # Type name voor thermal JSON builder
+            revit_type_name = _get_opening_type_name(element, wall_doc)
+
+            if DEBUG_OPENINGS:
+                print("    insert {} KEEP type={} dims={}x{}".format(
+                    element_id_int, opening_type, width_mm, height_mm
+                ))
+
+            openings.append({
+                "type": opening_type,
+                "width_mm": width_mm,
+                "height_mm": height_mm,
+                "wall_direction": wall_direction,
+                "u_value": u_value,
+                "revit_element_id": element_id_int,
+                "revit_type_name": revit_type_name,
+                "is_linked": is_linked,
+                "z_min_m": z_min_opening_m,
+                "z_max_m": z_max_opening_m,
+            })
+
+    return openings
+
+
+def _find_boundary_walls_for_face(doc, room, face_normal, z_min_m, z_max_m):
+    """Vind alle Wall elementen die bijdragen aan een room boundary face.
+
+    Gebruikt SpatialElementGeometryCalculator om boundary sub-faces te krijgen,
+    en extract dan de onderliggende Wall elementen (host + linked).
+
+    Args:
+        doc: Revit host Document
+        room: Revit Room element
+        face_normal: XYZ normale van de gezochte face
+        z_min_m: Onderkant face in meters
+        z_max_m: Bovenkant face in meters
+
+    Returns:
+        list: dicts met 'wall', 'wall_doc', 'is_linked'
+    """
+    walls = []
+
+    try:
+        calculator = SpatialElementGeometryCalculator(doc)
+        seg_result = calculator.CalculateSpatialElementGeometry(room)
+        spatial_solid = seg_result.GetGeometry()
+
+        for face in spatial_solid.Faces:
+            # Check if dit de juiste face is (normale + z-range match)
+            face_normal_calc = _get_face_normal(face)
+            if not _normals_are_similar(face_normal, face_normal_calc):
+                continue
+
+            face_z_min, face_z_max = _get_face_z_range(face)
+            if not _z_ranges_overlap(z_min_m, z_max_m, face_z_min, face_z_max):
+                continue
+
+            # Haal sub-faces en extract wall elements
+            sub_faces = seg_result.GetBoundaryFaceInfo(face)
+            if sub_faces and sub_faces.Count > 0:
+                for sub_face in sub_faces:
+                    element = sub_face.SpatialBoundaryElement
+                    if element is None:
+                        continue
+
+                    # Check of het een Wall is
+                    if element.Category is None:
+                        continue
+                    cat_id = element.Category.Id.IntegerValue
+                    if cat_id != -2000011:  # OST_Walls
+                        continue
+
+                    # Host vs linked detectie
+                    if hasattr(element, 'Document'):
+                        wall_doc = element.Document
+                        is_linked = (wall_doc.Title != doc.Title)
+                    else:
+                        wall_doc = doc
+                        is_linked = False
+
+                    walls.append({
+                        "wall": element,
+                        "wall_doc": wall_doc,
+                        "is_linked": is_linked,
+                    })
+
+    except Exception:
+        # Fallback: probeer walls via room boundaries (legacy methode)
+        try:
+            walls.extend(_find_walls_via_room_boundaries(doc, room, face_normal))
+        except Exception:
+            pass
+
+    # Dedup walls op wall.Id.IntegerValue - SEGC kan duplicaten opleveren
+    seen_wall_ids = set()
+    deduped = []
+    for wi in walls:
+        wid = wi["wall"].Id.IntegerValue
+        if wid in seen_wall_ids:
+            continue
+        seen_wall_ids.add(wid)
+        deduped.append(wi)
+
+    return deduped
+
+
+def _find_walls_via_room_boundaries(doc, room, face_normal):
+    """Fallback: vind walls via Room.GetBoundarySegments().
+
+    Minder robuust dan SEGC maar werkt als fallback voor edge cases.
+    """
+    walls = []
+
+    try:
+        options = SpatialElementBoundaryOptions()
+        options.SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Finish
+
+        boundary_segments = room.GetBoundarySegments(options)
+        if not boundary_segments:
+            return walls
+
+        for segment_loop in boundary_segments:
+            for segment in segment_loop:
+                element = doc.GetElement(segment.ElementId)
+                if element is None:
+                    continue
+                if element.Category is None:
+                    continue
+                if element.Category.Id.IntegerValue != -2000011:  # OST_Walls
+                    continue
+
+                walls.append({
+                    "wall": element,
+                    "wall_doc": doc,
+                    "is_linked": False,
+                })
+
+    except Exception:
+        pass
+
+    return walls
+
+
+def _normals_are_similar(normal_a, normal_b, tolerance=0.1):
+    """Check of twee normals in dezelfde richting wijzen (binnen tolerantie)."""
+    try:
+        dot_product = normal_a.DotProduct(normal_b)
+        return dot_product > (1.0 - tolerance)
+    except Exception:
+        return False
+
+
+def _z_ranges_overlap(z1_min, z1_max, z2_min, z2_max, tolerance=0.1):
+    """Check of twee z-ranges overlappen (binnen tolerantie)."""
+    return not (z1_max + tolerance < z2_min or z2_max + tolerance < z1_min)
+
+
+def _insert_overlaps_face(element, element_doc, is_linked, face_normal,
+                         z_min_m, z_max_m, face_area_m2, view3d, host_doc):
+    """Check of een insert geometrisch relevant is voor een boundary face.
+
+    Gebruikt bounding box overlap check. Voor kleine faces (< 1 m2) worden
+    alle inserts geaccepteerd om geen openings te missen.
+
+    Args:
+        element: Revit FamilyInstance (insert)
+        element_doc: Document van element (host of linked)
+        is_linked: True als element uit linked model komt
+        face_normal: XYZ normale van boundary face
+        z_min_m: Onderkant face in meters
+        z_max_m: Bovenkant face in meters
+        face_area_m2: Oppervlak van face voor filter-drempel
+        view3d: View3D voor bbox lookup
+        host_doc: Host document voor link transforms
+
+    Returns:
+        bool: True als insert relevant is voor deze face
+    """
+    # Voor kleine faces: alles doorlaten (voorkoming van false negatives)
+    if face_area_m2 < 1.0:
+        return True
+
+    try:
+        # Haal insert z-range op
+        ins_z_min_m, ins_z_max_m = _get_opening_z_range_m(
+            element, element_doc, is_linked, view3d, host_doc
+        )
+
+        if ins_z_min_m is None or ins_z_max_m is None:
+            # Geen z-range beschikbaar -> doorlaten (conservatief)
+            return True
+
+        # Z-overlap check
+        return _z_ranges_overlap(z_min_m, z_max_m, ins_z_min_m, ins_z_max_m)
+
+    except Exception:
+        # Bij falen: doorlaten (conservatief)
+        return True
+
+
+def _classify_insert_opening_type(element):
+    """Classificeer een insert element als opening type.
+
+    Args:
+        element: Revit FamilyInstance
+
+    Returns:
+        str: "window", "door", "curtain_wall" of None
+    """
+    try:
+        cat = element.Category
+        if cat is None:
+            return None
+
+        cat_id = cat.Id.IntegerValue
+        if cat_id == -2000014:  # OST_Windows
+            return "window"
+        elif cat_id == -2000023:  # OST_Doors
+            return "door"
+        elif cat_id == -2000170:  # OST_CurtainWallPanels
+            return "curtain_wall"
+        elif cat_id == -2000151:  # OST_GenericModel
+            # NL-bouwkunde families (NLRS etc.) zijn vaak Generic Models.
+            # Als FindInserts() dit element retourneert, heeft het een gat
+            # in de wand gemaakt → per definitie een opening.
+            # Naam-heuristiek om type te raden.
+            name = ""
+            try:
+                if element.Name is not None:
+                    name = element.Name
+            except Exception:
+                pass
+            # Probeer ook Symbol/FamilyName voor FamilyInstance
+            try:
+                if hasattr(element, "Symbol") and element.Symbol is not None:
+                    sym_name = element.Symbol.Family.Name if element.Symbol.Family else ""
+                    if sym_name:
+                        name = name + " " + sym_name
+            except Exception:
+                pass
+            lower = name.lower()
+            if "deur" in lower or "door" in lower:
+                return "door"
+            elif "paneel" in lower or "panel" in lower:
+                return "curtain_wall"
+            # Default: gevelraam
+            return "window"
+
+    except Exception:
+        pass
+
+    return None
+
+
+# =========================================================================
+# Opening extractie uit ray hits (legacy - niet meer gebruikt na Bug F fix)
 # =========================================================================
 
 def _collect_openings_from_hits(doc, opening_hits, wall_direction,
