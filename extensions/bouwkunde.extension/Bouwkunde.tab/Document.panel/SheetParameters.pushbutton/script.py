@@ -85,10 +85,11 @@ class SheetParameterWindow(WPFWindow):
         self.txt_date.Text = today.strftime("%d-%m-%Y")
         self.txt_schaal.Text = "1:50"
 
-        # Titleblock defaults
-        self.combo_std_schaal.SelectedIndex = 1  # Nee
-        self.combo_peil.SelectedIndex = 1  # Nee
+        # Titleblock defaults — Ja=1 (standaard/zichtbaar)
+        self.combo_std_schaal.SelectedIndex = 0  # Ja
+        self.combo_peil.SelectedIndex = 0  # Ja
         self.combo_noord.SelectedIndex = 0  # Ja
+        self.combo_stempel.SelectedIndex = 0  # Ja
         self.txt_kenmerk.Text = "2"
         self.txt_aantal_wijz.Text = "0"
 
@@ -138,12 +139,12 @@ class SheetParameterWindow(WPFWindow):
                 if omschr and omschr != "-":
                     params["wijziging_{}_omschr".format(letter)] = omschr
 
-        # Titleblock parameters
+        # Titleblock parameters — Ja=1, Nee=0 (Revit Yes/No convention)
         if self.chk_std_schaal.IsChecked == True and self.combo_std_schaal.SelectedIndex >= 0:
-            params['std_schaal'] = 0 if self.combo_std_schaal.SelectedIndex == 0 else 1
+            params['std_schaal'] = 1 if self.combo_std_schaal.SelectedIndex == 0 else 0
 
         if self.chk_peil.IsChecked == True and self.combo_peil.SelectedIndex >= 0:
-            params['v_peil'] = 0 if self.combo_peil.SelectedIndex == 0 else 1
+            params['v_peil'] = 1 if self.combo_peil.SelectedIndex == 0 else 0
 
         if self.chk_noord.IsChecked == True and self.combo_noord.SelectedIndex >= 0:
             params['noordpijl'] = 1 if self.combo_noord.SelectedIndex == 0 else 0
@@ -155,7 +156,7 @@ class SheetParameterWindow(WPFWindow):
                 pass
 
         if self.chk_stempel.IsChecked == True and self.combo_stempel.SelectedIndex >= 0:
-            params['stempel'] = 0 if self.combo_stempel.SelectedIndex == 0 else 1
+            params['stempel'] = 1 if self.combo_stempel.SelectedIndex == 0 else 0
 
         if self.chk_aantal_wijz.IsChecked == True and self.txt_aantal_wijz.Text.strip():
             try:
@@ -188,24 +189,36 @@ def get_parameter_value(element, param_name):
     return None
 
 
-def set_parameter_value(element, param_name, value):
-    """Set parameter waarde"""
+def _resolve_param(element, param_name):
+    """Zoek parameter op instance, val terug op symbol (type-parameter)."""
     param = element.LookupParameter(param_name)
     if param and not param.IsReadOnly:
+        return param
+    symbol = getattr(element, 'Symbol', None)
+    if symbol is not None:
+        sym_param = symbol.LookupParameter(param_name)
+        if sym_param and not sym_param.IsReadOnly:
+            return sym_param
+    return None
+
+
+def set_parameter_value(element, param_name, value):
+    """Set parameter waarde - probeert instance eerst, dan type."""
+    param = _resolve_param(element, param_name)
+    if not param:
+        return False
+    try:
         if param.StorageType == StorageType.String:
             param.Set(str(value))
         elif param.StorageType == StorageType.Integer:
-            try:
-                param.Set(int(value))
-            except (ValueError, TypeError):
-                pass
+            param.Set(int(value))
         elif param.StorageType == StorageType.Double:
-            try:
-                param.Set(float(value))
-            except (ValueError, TypeError):
-                pass
+            param.Set(float(value))
+        else:
+            return False
         return True
-    return False
+    except (ValueError, TypeError, Exception):
+        return False
 
 
 def filter_sheets_by_number(sheets, filter_text):
@@ -252,25 +265,47 @@ def update_sheet_parameters(sheet, params):
 
 
 def update_titleblock_parameters(titleblock, params):
-    """Update titleblock parameters"""
+    """Update titleblock parameters. Returns (updated, failed) als param-namen."""
     updated = []
+    failed = []
 
     mappings = [
         ('std_schaal', 'standaard_schaal'),
         ('v_peil', 'v_peil'),
         ('noordpijl', 'noordpijl'),
         ('kenmerknummer', 'kenmerknummer'),
-        ('stempel', 'stempel'),
-        ('aantal_wijzigingen', 'wijzigingen_op_tek'),
+        ('stempel', 'Stempel'),
+        ('aantal_wijzigingen', 'aantal_wijzigingen'),
         ('00_3bm_auteur', '00_3BM_auteur'),
     ]
 
     for key, param_name in mappings:
-        if params.get(key) is not None:
-            if set_parameter_value(titleblock, param_name, params[key]):
-                updated.append(key)
+        if params.get(key) is None:
+            continue
+        if set_parameter_value(titleblock, param_name, params[key]):
+            updated.append(key)
+        else:
+            failed.append(param_name)
 
-    return updated
+    return updated, failed
+
+
+def list_titleblock_param_names(titleblock):
+    """Verzamel parameter-namen op instance + symbol voor diagnostiek."""
+    names = set()
+    try:
+        for p in titleblock.Parameters:
+            names.add("{} (instance)".format(p.Definition.Name))
+    except Exception:
+        pass
+    symbol = getattr(titleblock, 'Symbol', None)
+    if symbol is not None:
+        try:
+            for p in symbol.Parameters:
+                names.add("{} (type)".format(p.Definition.Name))
+        except Exception:
+            pass
+    return sorted(names)
 
 
 def get_titleblock_from_sheet(sheet):
@@ -338,6 +373,9 @@ def main():
     with revit.Transaction("Update Sheet Parameters"):
         updated_sheets = 0
         updated_titleblocks = 0
+        sheets_zonder_titleblock = 0
+        all_failed = set()
+        diagnostic_dumped = False
 
         for sheet in sheets:
             sheet_num = get_parameter_value(sheet, "Sheet Number")
@@ -350,16 +388,42 @@ def main():
                     sheet_num, sheet_name, ", ".join(sheet_updates)))
 
             titleblock = get_titleblock_from_sheet(sheet)
-            if titleblock:
-                tb_updates = update_titleblock_parameters(titleblock, params)
-                if tb_updates:
-                    updated_titleblocks += 1
+            if not titleblock:
+                sheets_zonder_titleblock += 1
+                continue
+
+            tb_updates, tb_failed = update_titleblock_parameters(titleblock, params)
+            if tb_updates:
+                updated_titleblocks += 1
+            if tb_failed:
+                all_failed.update(tb_failed)
+                # Eerste keer dat NIETS van titleblock-params lukt: dump beschikbare namen
+                if not diagnostic_dumped and not tb_updates:
+                    diagnostic_dumped = True
+                    output.print_md("---")
+                    output.print_md(
+                        "### Diagnose: titleblock op {} "
+                        "({})".format(sheet_num, sheet_name))
+                    output.print_md(
+                        "Type: `{}`".format(titleblock.Symbol.FamilyName)
+                        if getattr(titleblock, 'Symbol', None) else "")
+                    output.print_md("**Beschikbare parameter-namen:**")
+                    for name in list_titleblock_param_names(titleblock):
+                        output.print_md("- `{}`".format(name))
 
     output.print_md("---")
     output.print_md("**{} sheets** bijgewerkt".format(updated_sheets))
     output.print_md("**{} titleblocks** bijgewerkt".format(updated_titleblocks))
+    if sheets_zonder_titleblock:
+        output.print_md(
+            "**{} sheets zonder titleblock**".format(sheets_zonder_titleblock))
+    if all_failed:
+        output.print_md(
+            "**Niet gevonden/read-only params:** {}".format(
+                ", ".join(sorted(all_failed))))
 
-    log.info("Voltooid: {} sheets, {} titleblocks".format(updated_sheets, updated_titleblocks))
+    log.info("Voltooid: {} sheets, {} titleblocks, failed_params={}".format(
+        updated_sheets, updated_titleblocks, sorted(all_failed)))
 
 
 if __name__ == '__main__':

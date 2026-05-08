@@ -40,6 +40,7 @@ Alle bestaande tools gebruiken Windows Forms. Nieuwe tools worden in WPF gebouwd
 ### 3BM_Bouwkunde Verbetering
 - [ ] Rc-tool uitbreiden: dynamische vochtbalans (Glaser → tijdsafhankelijk)
 - [ ] AutoDim: reference detection verbeteren bij complexe wanden
+- [ ] SheetParameters: `V Peil Zichtbaar` + `Kenmerknummer` — params bestaan niet in titleblock-family `A4_A0_grootformaat`. WIP: family aanpassen óf UI-velden verwijderen
 - [x] ~~SheetParameters: tekst-afsnijding op HD schermen oplossen~~ → opgelost door WPF migratie
 
 ### Documentatie
