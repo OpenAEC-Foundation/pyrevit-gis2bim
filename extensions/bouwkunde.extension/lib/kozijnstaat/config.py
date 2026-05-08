@@ -15,6 +15,7 @@ DEFAULTS = {
     # Family namen
     "kozijn_family": "3BM_kozijn",
     "glas_tag_family": "GEN_glas_v3",
+    "kozijn_tag_family": "31_TAG_wi_kozijnstaat_window",
 
     # Canvas wall (voor auto-generate)
     "canvas_wall_type": "Generic - 200mm",
@@ -22,11 +23,15 @@ DEFAULTS = {
     "canvas_wall_name": "3BM_Kozijnstaat_Canvas",
 
     # Grid layout
-    "grid_rows": 6,
-    "grid_cols": 8,
-    "tag_offset_mm": -1000.0,           # Z-offset voor tag-positie t.o.v. kozijn
-    "glas_tag_offset_x_mm": -500.0,     # X-offset glas-tag t.o.v. BoundingBox-midden
-    "glas_tag_offset_y_mm": 500.0,      # Y-offset glas-tag
+    "grid_rows": 6,                     # legacy — niet meer gebruikt door Create (auto)
+    "grid_cols": 8,                     # legacy — niet meer gebruikt door Create (auto)
+    "padding_mm": 500.0,                # marge tussen cellen (auto-grid)
+    "tag_offset_mm": -1000.0,           # Z-offset voor tag-positie t.o.v. kozijn (legacy)
+    "glas_tag_h_offset_mm": 50.0,       # H-offset glas-tag vanaf bottom-left hoek (langs view-right)
+    "glas_tag_v_offset_mm": 500.0,      # V-offset glas-tag vanaf bottom-left hoek (langs view-up)
+    "kozijn_tag_v_offset_mm": -500.0,   # V-offset kozijn-tag t.o.v. kozijn-bottom (langs view-up)
+    "glas_tag_offset_x_mm": -500.0,     # legacy — niet meer gebruikt
+    "glas_tag_offset_y_mm": 500.0,      # legacy — niet meer gebruikt
 
     # Maatvoering named references (voor family "3BM_kozijn")
     "detail_h_refs": [
@@ -49,7 +54,7 @@ DEFAULTS = {
     "main_v_refs": ["Sill", "Head"],
 
     # Parameter namen (voor aantallen_tellen)
-    "param_aantal": "aantal",
+    "param_aantal": "getekend",
     "param_aantal_gespiegeld": "aantal_gespiegeld",
 
     # Filter

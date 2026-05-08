@@ -31,7 +31,8 @@ STEPS = [
     ("Stap 1: Create", "KozijnstaatCreate.pushbutton"),
     ("Stap 2: Maatvoeren", "KozijnstaatMaatvoering.pushbutton"),
     ("Stap 3: Glas taggen", "KozijnstaatGlasTag.pushbutton"),
-    ("Stap 4: Aantallen tellen", "KozijnstaatAantallen.pushbutton"),
+    ("Stap 4: Window taggen", "KozijnstaatWindowTag.pushbutton"),
+    ("Stap 5: Aantallen tellen", "KozijnstaatAantallen.pushbutton"),
 ]
 
 

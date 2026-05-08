@@ -33,19 +33,41 @@ from kozijnstaat.family_collector import collect_window_instances
 from kozijnstaat.handedness import classify_many, is_mirrored
 
 
-def _ensure_param(symbol, param_name, output):
+def _safe_name(element):
+    """Defensieve .Name-getter (IronPython 2.7 / Revit 2025 quirk)."""
+    if element is None:
+        return ""
+    try:
+        clr_type = element.GetType()
+        prop = clr_type.GetProperty("Name")
+        if prop is not None:
+            v = prop.GetValue(element, None)
+            if v is not None:
+                return v
+    except Exception:
+        pass
+    try:
+        v = element.Name
+        if v is not None:
+            return v
+    except Exception:
+        pass
+    return ""
+
+
+def _ensure_param(symbol, param_name, type_name, output):
     """Check of de parameter bestaat en writable is op de FamilyType."""
     p = symbol.LookupParameter(param_name)
     if p is None:
         output.print_md(
             "  - *parameter '{0}' niet gevonden op type '{1}'*"
-            .format(param_name, symbol.Name)
+            .format(param_name, type_name)
         )
         return None
     if p.IsReadOnly:
         output.print_md(
             "  - *parameter '{0}' is read-only op type '{1}'*"
-            .format(param_name, symbol.Name)
+            .format(param_name, type_name)
         )
         return None
     return p
@@ -76,9 +98,33 @@ def run():
         )
         return
 
+    # Filter tag-families uit (bv. 31_TAG_wi_kozijnstaat_window)
+    filtered = []
+    excluded_tags = 0
+    for inst in instances:
+        try:
+            fam_name = _safe_name(inst.Symbol.Family)
+        except Exception:
+            fam_name = ""
+        if "TAG" in fam_name.upper():
+            excluded_tags += 1
+            continue
+        filtered.append(inst)
+    instances = filtered
+
     output.print_md(
-        "Gevonden: **{0}** kozijn-instances".format(len(instances))
+        "Gevonden: **{0}** kozijn-instances "
+        "(tag-families uitgesloten: {1})".format(
+            len(instances), excluded_tags,
+        )
     )
+
+    if not instances:
+        forms.alert(
+            "Alleen tag-families gevonden, geen echte kozijnen.",
+            title="Geen kozijnen",
+        )
+        return
 
     # 2. Groepeer per FamilySymbol (= Type)
     by_symbol = {}
@@ -86,7 +132,10 @@ def run():
         try:
             sid = inst.Symbol.Id.IntegerValue
         except Exception:
-            continue
+            try:
+                sid = inst.Symbol.Id.Value
+            except Exception:
+                continue
         by_symbol.setdefault(sid, []).append(inst)
 
     output.print_md(
@@ -107,10 +156,7 @@ def run():
 
         for sid, insts in by_symbol.items():
             symbol = insts[0].Symbol
-            try:
-                type_name = symbol.Name
-            except Exception:
-                type_name = "?"
+            type_name = _safe_name(symbol) or "?"
 
             buckets = classify_many(insts)
             mirrored_count = sum(
@@ -120,8 +166,8 @@ def run():
             basis = total - mirrored_count
 
             # Schrijf naar parameters
-            p_a = _ensure_param(symbol, p_aantal, output)
-            p_g = _ensure_param(symbol, p_gespiegeld, output)
+            p_a = _ensure_param(symbol, p_aantal, type_name, output)
+            p_g = _ensure_param(symbol, p_gespiegeld, type_name, output)
             if p_a is None or p_g is None:
                 total_skipped += 1
                 continue

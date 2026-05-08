@@ -36,28 +36,16 @@ from kozijnstaat.config import load_config
 from kozijnstaat.family_collector import collect_window_instances
 from kozijnstaat.reference_resolver import resolve_references
 from kozijnstaat.dimension_creator import (
-    get_instance_bbox,
-    create_horizontal_dimension,
-    create_vertical_dimension,
+    create_dim_at_kozijn_side,
 )
 
 MM_TO_FT = 1.0 / 304.8
 
 # Offsets van de dimension line t.o.v. de kozijn-BoundingBox (in mm)
-DETAIL_H_OFFSET_MM = 250.0    # boven het kozijn
-MAIN_H_OFFSET_MM = 500.0      # verder boven
-DETAIL_V_OFFSET_MM = -250.0   # links van het kozijn
-MAIN_V_OFFSET_MM = -500.0     # verder links
-
-
-def _dim_at(doc, view, refs, direction, bbox, offset_mm):
-    """Plaats dimension op offset t.o.v. bbox-min/max."""
-    offset_ft = offset_mm * MM_TO_FT
-    if direction == "horizontal":
-        y = bbox.Max.Y + offset_ft
-        return create_horizontal_dimension(doc, view, refs, y)
-    return create_vertical_dimension(doc, view, refs,
-                                     bbox.Min.X + offset_ft)
+DETAIL_H_OFFSET_MM = 150.0    # detail-maat: 150 mm boven het kozijn
+MAIN_H_OFFSET_MM = 250.0      # totaal-maat: 100 mm boven detail (250 totaal)
+DETAIL_V_OFFSET_MM = 150.0    # detail-maat: 150 mm links van het kozijn
+MAIN_V_OFFSET_MM = 250.0      # totaal-maat: 100 mm links van detail
 
 
 def run():
@@ -96,44 +84,48 @@ def run():
         missing_summary = {}
 
         for inst in instances:
-            bbox = get_instance_bbox(inst, view)
-            if bbox is None:
-                continue
-
-            # Detail horizontaal
+            # Detail horizontaal — boven kozijn op 150 mm
             found_dh, missing_dh = resolve_references(inst, detail_h)
             if len(found_dh) >= 2:
                 ordered_refs = [found_dh[n] for n in detail_h
                                 if n in found_dh]
-                if _dim_at(doc, view, ordered_refs, "horizontal",
-                           bbox, DETAIL_H_OFFSET_MM):
+                if create_dim_at_kozijn_side(
+                    doc, view, ordered_refs, inst, "top",
+                    DETAIL_H_OFFSET_MM,
+                ):
                     n_dims += 1
 
-            # Detail verticaal
+            # Detail verticaal — links naast kozijn op 150 mm
             found_dv, missing_dv = resolve_references(inst, detail_v)
             if len(found_dv) >= 2:
                 ordered_refs = [found_dv[n] for n in detail_v
                                 if n in found_dv]
-                if _dim_at(doc, view, ordered_refs, "vertical",
-                           bbox, DETAIL_V_OFFSET_MM):
+                if create_dim_at_kozijn_side(
+                    doc, view, ordered_refs, inst, "left",
+                    DETAIL_V_OFFSET_MM,
+                ):
                     n_dims += 1
 
-            # Hoofdmaat horizontaal
+            # Hoofdmaat horizontaal — boven kozijn op 200 mm
             found_mh, missing_mh = resolve_references(inst, main_h)
             if len(found_mh) >= 2:
                 ordered_refs = [found_mh[n] for n in main_h
                                 if n in found_mh]
-                if _dim_at(doc, view, ordered_refs, "horizontal",
-                           bbox, MAIN_H_OFFSET_MM):
+                if create_dim_at_kozijn_side(
+                    doc, view, ordered_refs, inst, "top",
+                    MAIN_H_OFFSET_MM,
+                ):
                     n_dims += 1
 
-            # Hoofdmaat verticaal
+            # Hoofdmaat verticaal — links naast kozijn op 200 mm
             found_mv, missing_mv = resolve_references(inst, main_v)
             if len(found_mv) >= 2:
                 ordered_refs = [found_mv[n] for n in main_v
                                 if n in found_mv]
-                if _dim_at(doc, view, ordered_refs, "vertical",
-                           bbox, MAIN_V_OFFSET_MM):
+                if create_dim_at_kozijn_side(
+                    doc, view, ordered_refs, inst, "left",
+                    MAIN_V_OFFSET_MM,
+                ):
                     n_dims += 1
 
             # Verzamel missing references per kozijn

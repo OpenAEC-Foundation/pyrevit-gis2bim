@@ -32,17 +32,51 @@ from Autodesk.Revit.DB import (
     FilteredElementCollector,
     FamilyInstance,
     BuiltInCategory,
+    XYZ,
 )
 
 from kozijnstaat.config import load_config
-from kozijnstaat.tag_placer import (
-    place_tag_with_family,
-    get_bbox_center,
-    offset_point,
-)
+from kozijnstaat.tag_placer import place_tag_with_family
 
 
 GLAS_KEYWORD = "glas"
+
+MM_TO_FT = 1.0 / 304.8
+
+# Offsets t.o.v. bottom-left hoek van het glas (in view-coords)
+H_OFFSET_MM = 50.0     # langs view.RightDirection (positief = naar binnen/rechts)
+V_OFFSET_MM = 500.0    # langs view.UpDirection    (positief = naar boven)
+
+
+def _bottom_left_in_view(bbox, view):
+    """Pak de hoek van bbox die in view-coords het meest bottom-left is.
+
+    Werkt door per wereld-as te kiezen tussen min/max op basis van het
+    teken van (RightDirection + UpDirection) langs die as.
+    """
+    r = view.RightDirection
+    u = view.UpDirection
+
+    def pick(lo, hi, dir_comp):
+        return lo if dir_comp >= 0 else hi
+
+    x = pick(bbox.Min.X, bbox.Max.X, r.X + u.X)
+    y = pick(bbox.Min.Y, bbox.Max.Y, r.Y + u.Y)
+    z = pick(bbox.Min.Z, bbox.Max.Z, r.Z + u.Z)
+    return XYZ(x, y, z)
+
+
+def _tag_location_from_corner(corner, view, h_offset_mm, v_offset_mm):
+    """Wereld-XYZ op (corner + h * view-right + v * view-up)."""
+    r = view.RightDirection
+    u = view.UpDirection
+    h_ft = h_offset_mm * MM_TO_FT
+    v_ft = v_offset_mm * MM_TO_FT
+    return XYZ(
+        corner.X + r.X * h_ft + u.X * v_ft,
+        corner.Y + r.Y * h_ft + u.Y * v_ft,
+        corner.Z + r.Z * h_ft + u.Z * v_ft,
+    )
 
 
 def _collect_glass_elements(doc, view_id):
@@ -77,12 +111,12 @@ def run():
 
     cfg = load_config()
     tag_family = cfg.get("glas_tag_family", "GEN_glas_v3")
-    dx_mm = float(cfg.get("glas_tag_offset_x_mm", -500.0))
-    dy_mm = float(cfg.get("glas_tag_offset_y_mm", 500.0))
+    h_offset_mm = float(cfg.get("glas_tag_h_offset_mm", H_OFFSET_MM))
+    v_offset_mm = float(cfg.get("glas_tag_v_offset_mm", V_OFFSET_MM))
 
     output.print_md(
-        "Tag family: **{0}**, offset (x,y) = ({1}, {2}) mm"
-        .format(tag_family, dx_mm, dy_mm)
+        "Tag family: **{0}**, offset vanaf bottom-left hoek: "
+        "h={1}mm, v={2}mm".format(tag_family, h_offset_mm, v_offset_mm)
     )
 
     elements = _collect_glass_elements(doc, view.Id)
@@ -105,12 +139,18 @@ def run():
         n_placed = 0
         n_failed = 0
         for elem in elements:
-            center = get_bbox_center(elem, view)
-            if center is None:
+            try:
+                bbox = elem.get_BoundingBox(view)
+            except Exception:
+                bbox = None
+            if bbox is None:
                 n_failed += 1
                 continue
 
-            loc = offset_point(center, dx_mm=dx_mm, dy_mm=dy_mm)
+            corner = _bottom_left_in_view(bbox, view)
+            loc = _tag_location_from_corner(
+                corner, view, h_offset_mm, v_offset_mm,
+            )
             tag = place_tag_with_family(
                 doc, view, elem, loc, tag_family
             )

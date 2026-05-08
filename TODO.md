@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 7 maart 2026*
+*Laatste update: 8 mei 2026*
 
 ---
 
@@ -80,6 +80,19 @@ Alle bestaande tools gebruiken Windows Forms. Nieuwe tools worden in WPF gebouwd
 ---
 
 ## Voltooid
+
+### Mei 2026
+- [x] **Kozijnstaat tooling end-to-end werkend in Revit 2025**:
+  - Create: per-kozijn variabele wand-fill layout (eigen breedte + 500 mm h, 2000 mm v tussen rijen), start linksboven, view-aligned u-direction via `wall.Orientation`
+  - Maatvoeren: 4 dim-lines per kozijn (detail/totaal × H/V) met view-aware placement op 150/250 mm offset, gebruikt werkelijke kozijn-afmetingen i.p.v. bbox
+  - GlasTag: anchor op bottom-left hoek glas-bbox + view-aligned h/v offsets (50/500 mm default)
+  - WindowTag: nieuwe pushbutton, tagt kozijnen met `31_TAG_wi_kozijnstaat_window` op 500 mm onder sill
+  - Aantallen: filter tag-families uit (TAG in naam), defensieve `.Name` via .NET reflection, param `getekend` + `aantal_gespiegeld`
+  - Wizard: 5 stappen (Create → Maatvoeren → GlasTag → WindowTag → Aantallen)
+- [x] File-logger module (`lib/kozijnstaat/logger.py`) voor in-Revit debug output naar `%TEMP%\3bm_exchange\kozijnstaat_debug.log`
+- [x] `_safe_name()` helper in family_collector + scripts: omzeilt IronPython 2.7 / Revit 2025 `.Name` AttributeError via `GetType().GetProperty("Name").GetValue()`
+- [x] Parameter readout met sanity-check: detecteert Length-vs-Number-storage, valt terug op raw mm bij waardes buiten 100..6000 mm range
+- [x] Icon voor WindowTag-pushbutton (kozijn + leader + tag in 3BM huisstijl)
 
 ### Maart 2026
 - [x] GIS2BIM: Mesh3D tool (OBJ/GLB import, Google 3D Tiles API, MTL kleuren, ECEF conversie)
