@@ -72,6 +72,7 @@ try:
         Transaction,
         XYZ,
         BuiltInParameter,
+        StorageType,
     )
     from Autodesk.Revit.DB.Structure import StructuralType
     from Autodesk.Revit.UI.Selection import ObjectType
@@ -84,6 +85,10 @@ try:
         collect_window_symbols,
         get_symbol_width_mm,
         get_symbol_height_mm,
+        _read_string_param,
+        find_first_instance_per_symbol,
+        find_workset_id_by_name,
+        _id_int,
     )
     _early_log("family_collector imported")
     from kozijnstaat.grid_layout import (
@@ -100,6 +105,135 @@ except Exception:
 
 HORIZONTAL_SPACING_MM = 500.0
 ROW_SPACING_MM = 2000.0
+
+
+def _set_instance_workset(inst, workset_id_int, label):
+    """Zet de workset van een instance via ELEM_PARTITION_PARAM.
+
+    No-op als de param read-only is (bv. niet-workshared doc) of als
+    workset_id_int None is. Logt resultaat naar klog.
+    """
+    if workset_id_int is None:
+        return False
+    try:
+        p = inst.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+    except Exception as ex:
+        try:
+            klog.warn(u"workset param lookup {0} failed: {1}".format(label, ex))
+        except Exception:
+            pass
+        return False
+    if p is None:
+        return False
+    if p.IsReadOnly:
+        try:
+            klog.warn(u"workset param read-only voor {0}".format(label))
+        except Exception:
+            pass
+        return False
+    try:
+        p.Set(int(workset_id_int))
+        try:
+            klog.info(
+                u"workset op {0} gezet -> id={1}".format(label, workset_id_int)
+            )
+        except Exception:
+            pass
+        return True
+    except Exception as ex:
+        try:
+            klog.warn(u"workset set {0} failed: {1}".format(label, ex))
+        except Exception:
+            pass
+        return False
+
+
+def _copy_instance_params(src_inst, dst_inst, param_names, label):
+    """Kopieer instance-param-waardes van src naar dst.
+
+    Slaat read-only / ontbrekende params stil over. Logt elke
+    poging+resultaat naar klog zodat afwijkingen traceerbaar zijn.
+
+    Returns:
+        list[(name, ok, src_val_str, msg)] — per param een tuple voor
+        output-tabel in run().
+    """
+    rows = []
+    for name in param_names:
+        try:
+            p_src = src_inst.LookupParameter(name)
+        except Exception as ex:
+            rows.append((name, False, u"", u"src lookup: {0}".format(ex)))
+            continue
+        try:
+            p_dst = dst_inst.LookupParameter(name)
+        except Exception as ex:
+            rows.append((name, False, u"", u"dst lookup: {0}".format(ex)))
+            continue
+
+        if p_src is None:
+            rows.append((name, False, u"", u"src param niet aanwezig"))
+            continue
+        if p_dst is None:
+            rows.append((name, False, u"", u"dst param niet aanwezig"))
+            continue
+        if not p_src.HasValue:
+            rows.append((name, False, u"", u"src leeg"))
+            continue
+        if p_dst.IsReadOnly:
+            rows.append((name, False, u"", u"dst read-only"))
+            continue
+
+        try:
+            st = p_src.StorageType
+        except Exception:
+            st = None
+
+        src_val_str = u""
+        try:
+            v = p_src.AsValueString()
+            if v:
+                src_val_str = v
+        except Exception:
+            pass
+
+        try:
+            if st == StorageType.String:
+                v = p_src.AsString()
+                if v is None:
+                    v = u""
+                p_dst.Set(v)
+                if not src_val_str:
+                    src_val_str = v
+            elif st == StorageType.Double:
+                p_dst.Set(p_src.AsDouble())
+            elif st == StorageType.Integer:
+                p_dst.Set(p_src.AsInteger())
+            elif st == StorageType.ElementId:
+                p_dst.Set(p_src.AsElementId())
+            else:
+                rows.append((name, False, src_val_str, u"unsupported storage"))
+                continue
+            rows.append((name, True, src_val_str, u""))
+            try:
+                klog.info(
+                    u"copy-param '{0}' on {1}: '{2}' OK".format(
+                        name, label, src_val_str,
+                    )
+                )
+            except Exception:
+                pass
+        except Exception as ex:
+            rows.append((name, False, src_val_str, u"set: {0}".format(ex)))
+            try:
+                klog.warn(
+                    u"copy-param '{0}' on {1} FAILED: {2}".format(
+                        name, label, ex,
+                    )
+                )
+            except Exception:
+                pass
+    return rows
 
 
 def _get_name(element):
@@ -257,10 +391,36 @@ def run():
 
     cfg = load_config()
     kozijn_family = cfg.get("kozijn_family", "3BM_kozijn")
-    klog.info(u"config kozijn_family filter = '{0}'".format(kozijn_family))
+    merk_param = cfg.get("param_merk", "merk")
+    instance_params_to_copy = cfg.get("instance_params_to_copy", []) or []
+    only_placed = bool(cfg.get("only_placed_types", True))
+    workset_name = cfg.get("kozijnstaat_workset_name", "") or ""
+    target_workset_id = None
+    if workset_name:
+        target_workset_id = find_workset_id_by_name(doc, workset_name)
+        if target_workset_id is None:
+            klog.warn(
+                u"workset '{0}' niet gevonden — canvas-instances "
+                u"blijven op actieve workset".format(workset_name)
+            )
+        else:
+            klog.info(
+                u"target workset '{0}' id={1}".format(
+                    workset_name, target_workset_id,
+                )
+            )
+    klog.info(
+        u"config kozijn_family='{0}' merk_param='{1}' "
+        u"instance_params_to_copy={2} workset='{3}'".format(
+            kozijn_family, merk_param, instance_params_to_copy,
+            workset_name,
+        )
+    )
 
-    # 1. Verzamel unieke types
-    symbols = collect_window_symbols(doc, name_contains=kozijn_family)
+    # 1. Verzamel unieke types (gesorteerd op merk-param, dan family+type)
+    symbols = collect_window_symbols(
+        doc, name_contains=kozijn_family, merk_param=merk_param,
+    )
     if not symbols:
         forms.alert(
             "Geen kozijn FamilyTypes gevonden met filter '{0}'."
@@ -268,6 +428,37 @@ def run():
             title="Geen types",
         )
         return
+
+    # 1b. Filter op "alleen types met >=1 model-instance" (excl. canvas-
+    # workset). Tegelijk verzamelen we de eerste model-instance per
+    # symbol — die hergebruiken we later voor instance-param copy.
+    first_inst_per_symbol = find_first_instance_per_symbol(
+        doc, symbols, exclude_workset_id=target_workset_id,
+    )
+    if only_placed:
+        before = len(symbols)
+        symbols = [
+            s for s in symbols if _id_int(s) in first_inst_per_symbol
+        ]
+        skipped = before - len(symbols)
+        if skipped > 0:
+            klog.info(
+                u"only_placed_types: {0} types overgeslagen "
+                u"(geen model-instance buiten kozijnstaat-workset)"
+                .format(skipped)
+            )
+            output.print_md(
+                "Overgeslagen: **{0}** types zonder model-instance "
+                "(`only_placed_types=True`)".format(skipped)
+            )
+        if not symbols:
+            forms.alert(
+                "Geen kozijn-types met model-instances gevonden.\n\n"
+                "Zet 'only_placed_types' op False in user_config.json "
+                "om alle geladen types te plaatsen.",
+                title="Geen geplaatste types",
+            )
+            return
 
     n = len(symbols)
     output.print_md("Gevonden: **{0}** unieke kozijntypes".format(n))
@@ -290,9 +481,9 @@ def run():
     widths_mm = []
     heights_mm = []
     fallback_used = False
-    output.print_md("### Gedetecteerde afmetingen")
-    output.print_md("| # | Family | Type | Breedte | Hoogte |")
-    output.print_md("|---|---|---|---|---|")
+    output.print_md("### Gedetecteerde afmetingen (gesorteerd op merk)")
+    output.print_md("| # | Merk | Family | Type | Breedte | Hoogte |")
+    output.print_md("|---|---|---|---|---|---|")
     for idx, s in enumerate(symbols):
         try:
             fam = s.Family
@@ -300,6 +491,8 @@ def run():
             fam = None
         fam_name = _get_name(fam) or "?"
         type_name = _get_name(s) or "?"
+        merk_val = _read_string_param(s, merk_param) if merk_param else u""
+        merk_disp = merk_val if merk_val else u"*(geen)*"
         w_raw = get_symbol_width_mm(s)
         h_raw = get_symbol_height_mm(s)
         w_eff = w_raw if w_raw > 0 else 1000.0
@@ -311,8 +504,8 @@ def run():
         if w_raw <= 0 or h_raw <= 0:
             fallback_used = True
         output.print_md(
-            "| {0} | {1} | {2} | {3:.0f}{4} | {5:.0f}{6} |".format(
-                idx, fam_name, type_name,
+            "| {0} | {1} | {2} | {3} | {4:.0f}{5} | {6:.0f}{7} |".format(
+                idx, merk_disp, fam_name, type_name,
                 w_eff, flag_w, h_eff, flag_h,
             )
         )
@@ -416,6 +609,19 @@ def run():
         layout, origin, u_dir, v_dir,
     )
 
+    # 4b. first_inst_per_symbol is al opgehaald in stap 1b voor de
+    # only_placed_types filter — hergebruiken voor instance-param copy.
+    # Als de copy-feature uit staat, leeg maken.
+    if not instance_params_to_copy:
+        first_inst_per_symbol = {}
+    else:
+        klog.info(
+            u"first_inst_per_symbol available for copy: {0} types "
+            u"(excl. workset id={1})".format(
+                len(first_inst_per_symbol), target_workset_id,
+            )
+        )
+
     # 5. Plaats kozijnen
     tx = Transaction(doc, "Kozijnstaat - Plaats kozijnen")
     tx.Start()
@@ -449,6 +655,25 @@ def run():
                         _id_str(inst),
                     )
                 )
+
+                # Optie A: kopieer instance-params van eerste model-instance
+                if instance_params_to_copy:
+                    sid = _id_int(symbol)
+                    src_inst = first_inst_per_symbol.get(sid)
+                    if src_inst is None:
+                        klog.info(
+                            u"  geen model-instance voor type {0}, "
+                            u"instance-params blijven default".format(sym_name)
+                        )
+                    else:
+                        _copy_instance_params(
+                            src_inst, inst,
+                            instance_params_to_copy, sym_name,
+                        )
+
+                # Zet workset op canvas-instance (na placement, voor regen)
+                if target_workset_id is not None:
+                    _set_instance_workset(inst, target_workset_id, sym_name)
             except Exception as ex:
                 try:
                     ex_msg = str(ex)

@@ -26,10 +26,13 @@ if LIB_DIR not in sys.path:
 
 from pyrevit import revit, forms, script
 
-from Autodesk.Revit.DB import Transaction
+from Autodesk.Revit.DB import Transaction, BuiltInParameter
 
 from kozijnstaat.config import load_config
-from kozijnstaat.family_collector import collect_window_instances
+from kozijnstaat.family_collector import (
+    collect_window_instances,
+    find_workset_id_by_name,
+)
 from kozijnstaat.handedness import classify_many, is_mirrored
 
 
@@ -80,11 +83,18 @@ def run():
 
     cfg = load_config()
     name_filter = cfg.get("name_filter_contains") or ""
-    p_aantal = cfg.get("param_aantal", "aantal")
+    p_aantal = cfg.get("param_aantal", "aantal_getekend")
     p_gespiegeld = cfg.get("param_aantal_gespiegeld", "aantal_gespiegeld")
+    workset_name = cfg.get("kozijnstaat_workset_name", "") or ""
+    exclude_ws_id = None
+    if workset_name:
+        exclude_ws_id = find_workset_id_by_name(doc, workset_name)
 
     output.print_md(
-        "Filter: family-naam bevat **'{0}'**".format(name_filter)
+        "Filter: family-naam bevat **'{0}'** | canvas-workset "
+        "uitgesloten: **'{1}'** (id={2})".format(
+            name_filter, workset_name, exclude_ws_id,
+        )
     )
 
     # 1. Verzamel instances
@@ -98,9 +108,12 @@ def run():
         )
         return
 
-    # Filter tag-families uit (bv. 31_TAG_wi_kozijnstaat_window)
+    # Filter tag-families uit (bv. 31_TAG_wi_kozijnstaat_window) en
+    # kozijnstaat-canvas-instances uit (workset-based) — die zijn
+    # visualisaties van het model en mogen niet meetellen.
     filtered = []
     excluded_tags = 0
+    excluded_canvas = 0
     for inst in instances:
         try:
             fam_name = _safe_name(inst.Symbol.Family)
@@ -109,13 +122,25 @@ def run():
         if "TAG" in fam_name.upper():
             excluded_tags += 1
             continue
+        if exclude_ws_id is not None:
+            try:
+                pw = inst.get_Parameter(
+                    BuiltInParameter.ELEM_PARTITION_PARAM
+                )
+                if (pw and pw.HasValue
+                        and int(pw.AsInteger()) == exclude_ws_id):
+                    excluded_canvas += 1
+                    continue
+            except Exception:
+                pass
         filtered.append(inst)
     instances = filtered
 
     output.print_md(
         "Gevonden: **{0}** kozijn-instances "
-        "(tag-families uitgesloten: {1})".format(
-            len(instances), excluded_tags,
+        "(tag-families uitgesloten: {1}, canvas-instances "
+        "uitgesloten: {2})".format(
+            len(instances), excluded_tags, excluded_canvas,
         )
     )
 
@@ -165,7 +190,8 @@ def run():
             total = len(insts)
             basis = total - mirrored_count
 
-            # Schrijf naar parameters
+            # Schrijf naar parameters — aantal_getekend = basis (niet-
+            # gespiegeld), aantal_gespiegeld = mirrored. Som = total.
             p_a = _ensure_param(symbol, p_aantal, type_name, output)
             p_g = _ensure_param(symbol, p_gespiegeld, type_name, output)
             if p_a is None or p_g is None:
@@ -173,7 +199,7 @@ def run():
                 continue
 
             try:
-                p_a.Set(total)
+                p_a.Set(basis)
                 p_g.Set(mirrored_count)
                 total_rows += 1
             except Exception as ex:

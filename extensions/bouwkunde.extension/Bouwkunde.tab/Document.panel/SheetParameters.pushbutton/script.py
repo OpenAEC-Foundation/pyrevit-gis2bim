@@ -265,27 +265,36 @@ def update_sheet_parameters(sheet, params):
 
 
 def update_titleblock_parameters(titleblock, params):
-    """Update titleblock parameters. Returns (updated, failed) als param-namen."""
+    """Update titleblock parameters. Returns (updated, failed) als param-namen.
+
+    Mapping-waarde mag string of lijst zijn. Bij lijst: eerste param-naam die
+    op instance/symbol gevonden wordt, wordt gezet. Backwards-compat met oudere
+    titleblock-families.
+    """
     updated = []
     failed = []
 
     mappings = [
-        ('std_schaal', 'standaard_schaal'),
-        ('v_peil', 'v_peil'),
-        ('noordpijl', 'noordpijl'),
-        ('kenmerknummer', 'kenmerknummer'),
-        ('stempel', 'Stempel'),
-        ('aantal_wijzigingen', 'aantal_wijzigingen'),
-        ('00_3bm_auteur', '00_3BM_auteur'),
+        ('std_schaal', ['standaard_schaal']),
+        ('v_peil', ['v_peil']),
+        ('noordpijl', ['noordpijl']),
+        ('kenmerknummer', ['kenmerknummer']),
+        ('stempel', ['Stempel', 'stempel']),
+        ('aantal_wijzigingen', ['aantal_wijzigingen', 'wijzigingen_op_tek']),
+        ('00_3bm_auteur', ['00_3BM_auteur']),
     ]
 
-    for key, param_name in mappings:
+    for key, candidates in mappings:
         if params.get(key) is None:
             continue
-        if set_parameter_value(titleblock, param_name, params[key]):
-            updated.append(key)
-        else:
-            failed.append(param_name)
+        success = False
+        for name in candidates:
+            if set_parameter_value(titleblock, name, params[key]):
+                updated.append(key)
+                success = True
+                break
+        if not success:
+            failed.append(candidates[0])
 
     return updated, failed
 

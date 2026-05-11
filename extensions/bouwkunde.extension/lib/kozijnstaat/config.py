@@ -12,9 +12,10 @@ CONFIG_DIR = os.path.dirname(__file__)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "user_config.json")
 
 DEFAULTS = {
-    # Family namen
-    "kozijn_family": "3BM_kozijn",
-    "glas_tag_family": "GEN_glas_v3",
+    # Family namen — 3BM-conventie 2025: "31_"-prefix, "_v4" suffix.
+    # Per project override-baar via user_config.json in deze lib-dir.
+    "kozijn_family": "31_kozijn",
+    "glas_tag_family": "GEN_glas_v4",
     "kozijn_tag_family": "31_TAG_wi_kozijnstaat_window",
 
     # Canvas wall (voor auto-generate)
@@ -53,9 +54,51 @@ DEFAULTS = {
     "main_h_refs": ["Right", "Left"],
     "main_v_refs": ["Sill", "Head"],
 
-    # Parameter namen (voor aantallen_tellen)
-    "param_aantal": "getekend",
+    # Parameter namen (voor aantallen_tellen).
+    # 3BM-conventie (post 2025-05 cleanup):
+    #   aantal_getekend  = aantal NIET-gespiegelde instances per type
+    #   aantal_gespiegeld = aantal gespiegelde instances per type
+    # Som = totaal aantal van dit type in het model.
+    "param_aantal": "aantal_getekend",
     "param_aantal_gespiegeld": "aantal_gespiegeld",
+
+    # Sortering: type-parameter waarop Create de kozijnen sorteert.
+    # Leeg ("") = fallback naar family- + type-naam.
+    "param_merk": "kozijnmerk",
+
+    # Instance-parameters die Create overneemt van de eerst-gevonden
+    # model-instance naar de canvas-instance (optie A: 1 stelkozijn per
+    # type). 3BM-conventie: stelkozijn = sparing_type (ElementId ref).
+    # Bij projecten waar 1 type meerdere stelkozijnen heeft, toont de
+    # kozijnstaat de waarde van de EERSTE gevonden instance.
+    "instance_params_to_copy": [
+        "sparing_type",
+        "aftimmering_type",
+        "latei_type_cw",
+        "vensterbank_type_cw",
+        "waterslag_type_cw",
+    ],
+
+    # Workset waarin Create de canvas-kozijnen plaatst. Tegelijk wordt
+    # deze workset gebruikt om kozijnstaat-instances UIT te sluiten als
+    # source bij optie-A copy (anders zou een herhaalde run de canvas
+    # van zichzelf laten kopieren). Leeg ("") = workset-feature uit.
+    "kozijnstaat_workset_name": "kozijnstaat",
+
+    # True (default): plaats alleen kozijn-TYPES die ergens in het model
+    # daadwerkelijk geinstanceerd zijn (buiten de kozijnstaat-workset).
+    # Geladen-maar-ongebruikte types worden overgeslagen. Zet op False
+    # om alle types op canvas te plaatsen (bv. voor library-overzichten).
+    "only_placed_types": True,
+
+    # Legend (POC)
+    # Naam van een handmatig aangemaakte template Legend-view die
+    # minstens 1 LegendComponent bevat. Vereist omdat Legend-views en
+    # LegendComponents niet via de Revit API from-scratch gemaakt
+    # kunnen worden — alleen gedupliceerd/gekopieerd.
+    "template_legend_name": "TEMPLATE_kozijn_legend",
+    "legend_scale": 20,                 # 1:20
+    "legend_spacing_ft": 3.0,           # afstand tussen views in feet
 
     # Filter
     "name_filter_contains": "kozijn",

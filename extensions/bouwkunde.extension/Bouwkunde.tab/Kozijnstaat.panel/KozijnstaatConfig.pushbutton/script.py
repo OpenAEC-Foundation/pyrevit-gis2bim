@@ -106,7 +106,8 @@ class KozijnstaatConfigForm(BaseForm):
         y = self._add_textbox(tab, y, lw, "Canvas-wall level (leeg = eerste)",
                               "canvas_wall_level", 250)
 
-        y = self._add_textbox(tab, y, lw, "Parameter 'aantal'",
+        y = self._add_textbox(tab, y, lw,
+                              "Parameter 'aantal_getekend'",
                               "param_aantal", 200)
         y = self._add_textbox(tab, y, lw,
                               "Parameter 'aantal_gespiegeld'",

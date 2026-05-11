@@ -1,12 +1,62 @@
 # -*- coding: utf-8 -*-
 """Verzamel unieke kozijn FamilySymbols (types) uit het actieve document."""
 
+import re
+
 from Autodesk.Revit.DB import (
     FilteredElementCollector,
     BuiltInCategory,
     FamilySymbol,
     FamilyInstance,
 )
+
+_NATURAL_SPLIT_RE = re.compile(r"(\d+)")
+
+
+def _natural_key(value):
+    """Tuple voor natural sort (KZ-2 voor KZ-10).
+
+    Returnt een tuple van (kind, value) paren — kind=0 voor int, kind=1
+    voor lowercased text — zodat ints en strings nooit direct met elkaar
+    vergeleken worden.
+    """
+    if not value:
+        return ((1, u""),)
+    parts = _NATURAL_SPLIT_RE.split(value)
+    out = []
+    for p in parts:
+        if not p:
+            continue
+        if p.isdigit():
+            out.append((0, int(p)))
+        else:
+            out.append((1, p.lower()))
+    return tuple(out) if out else ((1, u""),)
+
+
+def _read_string_param(symbol, param_name):
+    """Lees een string-parameter op een FamilySymbol; lege string bij absentie."""
+    if not param_name:
+        return u""
+    try:
+        p = symbol.LookupParameter(param_name)
+    except Exception:
+        return u""
+    if p is None or not p.HasValue:
+        return u""
+    try:
+        v = p.AsString()
+        if v:
+            return v
+    except Exception:
+        pass
+    try:
+        v = p.AsValueString()
+        if v:
+            return v
+    except Exception:
+        pass
+    return u""
 
 try:
     from kozijnstaat import logger as _log
@@ -31,16 +81,19 @@ def _name(symbol):
         return ""
 
 
-def collect_window_symbols(doc, name_contains=None):
+def collect_window_symbols(doc, name_contains=None, merk_param="merk"):
     """Alle FamilySymbols in categorie Windows.
 
     Args:
         doc: Revit Document
         name_contains: optioneel - alleen families waarvan de
             Family.Name dit substring bevat (case-insensitive)
+        merk_param: type-parameter waarop gesorteerd wordt (natural sort).
+            Leeg/None = fallback op family-naam + type-naam.
 
     Returns:
-        list[FamilySymbol] gesorteerd op family-naam + type-naam
+        list[FamilySymbol] gesorteerd op (merk_param value, family-naam,
+        type-naam). Symbols zonder merk-waarde komen achteraan.
     """
     symbols = (
         FilteredElementCollector(doc)
@@ -62,8 +115,15 @@ def collect_window_symbols(doc, name_contains=None):
         try:
             type_name = s.Name
         except Exception:
-            type_name = ""
-        return (_name(s), type_name)
+            type_name = u""
+        merk = _read_string_param(s, merk_param) if merk_param else u""
+        has_merk = 0 if merk else 1
+        return (
+            has_merk,
+            _natural_key(merk),
+            _natural_key(_name(s)),
+            _natural_key(type_name),
+        )
 
     filtered.sort(key=sort_key)
     return filtered
@@ -106,6 +166,121 @@ def collect_window_instances(doc, name_contains=None, view_id=None):
             continue
         if needle in fam_name.lower():
             result.append(inst)
+    return result
+
+
+def _id_int(element):
+    """Stabiel int uit een ElementId (Revit 2023 .Value, eerder .IntegerValue)."""
+    if element is None:
+        return None
+    try:
+        eid = element.Id
+    except Exception:
+        return None
+    for attr in ("Value", "IntegerValue"):
+        try:
+            v = getattr(eid, attr)
+            if callable(v):
+                v = v()
+            return int(v)
+        except Exception:
+            continue
+    return None
+
+
+def find_workset_id_by_name(doc, name):
+    """Zoek de int-id van een UserWorkset op naam (case-sensitive).
+
+    Returns:
+        int (Workset.Id.IntegerValue), of None bij niet gevonden / niet
+        workshared.
+    """
+    if not name:
+        return None
+    try:
+        from Autodesk.Revit.DB import (
+            FilteredWorksetCollector, WorksetKind,
+        )
+    except Exception:
+        return None
+    try:
+        wsc = FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+    except Exception:
+        return None
+    for ws in wsc:
+        try:
+            if ws.Name == name:
+                return int(ws.Id.IntegerValue)
+        except Exception:
+            continue
+    return None
+
+
+def _instance_workset_id(inst):
+    """Lees de workset-id (int) van een instance via ELEM_PARTITION_PARAM."""
+    try:
+        from Autodesk.Revit.DB import BuiltInParameter
+        p = inst.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+        if p and p.HasValue:
+            return int(p.AsInteger())
+    except Exception:
+        pass
+    return None
+
+
+def find_first_instance_per_symbol(doc, symbols, exclude_workset_id=None):
+    """Voor elke FamilySymbol de eerst-gevonden FamilyInstance in doc.
+
+    Wordt door KozijnstaatCreate gebruikt om instance-parameters
+    (bv. 'stelkozijn'/'sparing_type') te kopieren van de model-instance
+    naar de canvas-instance. Bij projecten met meerdere instances per
+    type krijgt de canvas de waarde van de eerste gevonden instance.
+
+    Args:
+        doc: Revit Document
+        symbols: iterable van FamilySymbol — beperkt de zoekruimte
+        exclude_workset_id: int — instances op deze workset overslaan.
+            Gebruikt om canvas-instances (kozijnstaat-workset) uit te
+            sluiten als source — anders kopieert een tweede run de
+            defaults van een vorige run.
+
+    Returns:
+        dict[int, FamilyInstance] — keyed by symbol.Id int-waarde.
+        Types zonder model-instance (buiten de exclude-workset) komen
+        niet in de dict.
+    """
+    target_ids = set()
+    for s in symbols:
+        sid = _id_int(s)
+        if sid is not None:
+            target_ids.add(sid)
+
+    result = {}
+    if not target_ids:
+        return result
+
+    instances = (
+        FilteredElementCollector(doc)
+        .OfCategory(BuiltInCategory.OST_Windows)
+        .OfClass(FamilyInstance)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    for inst in instances:
+        try:
+            sym = inst.Symbol
+        except Exception:
+            continue
+        sid = _id_int(sym)
+        if sid is None or sid not in target_ids:
+            continue
+        if sid in result:
+            continue
+        if exclude_workset_id is not None:
+            ws_id = _instance_workset_id(inst)
+            if ws_id is not None and ws_id == exclude_workset_id:
+                continue
+        result[sid] = inst
     return result
 
 

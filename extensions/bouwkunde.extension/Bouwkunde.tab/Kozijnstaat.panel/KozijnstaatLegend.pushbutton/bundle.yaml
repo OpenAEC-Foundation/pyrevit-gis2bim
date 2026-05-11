@@ -1,0 +1,8 @@
+title: "Legend\n(POC)"
+tooltip: >-
+  Proof of concept: maakt voor het eerste kozijn-type uit de
+  kozijnstaat (na merk-sort) een Legend-view met Plan + Front + Right
+  op schaal 1:20. Vereist een handmatig aangemaakte template-legend
+  met minstens 1 LegendComponent (naam via Config).
+author: 3BM Bouwkunde
+highlight: new
