@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - Status
 
-*Laatste update: 8 mei 2026*
+*Laatste update: 11 mei 2026*
 
 ---
 
@@ -98,7 +98,8 @@ bouwkunde.extension/
     ├── Fundering.panel/        PalenNummeren
     ├── IFC.panel/              IFCKozijnAnalyzer
     ├── Kozijnstaat.panel/      Wizard, Create, Maatvoeren, GlasTag,
-    │                           WindowTag, Aantallen, Config
+    │                           WindowTag, Aantallen, Rename, Legend,
+    │                           Config
     ├── Maatvoering.panel/      AutoDim, CrossDim
     ├── Materialen.panel/       DbExp, MatExp, MatImp, NAAKTGenerator
     └── Test.panel/             MCPStatus

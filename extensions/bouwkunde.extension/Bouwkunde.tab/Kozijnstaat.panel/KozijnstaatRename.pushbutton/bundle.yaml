@@ -1,0 +1,7 @@
+title: "Rename\nKozijnen"
+tooltip: >-
+  Hernoemt kozijn-type-namen zodat het b<breedte>mm_h<hoogte>mm gedeelte
+  exact de huidige kozijn_breedte / kozijn_hoogte parameters weerspiegelt.
+  Behoudt prefix (bv. H01_) en suffix (bv. _WBDBO30, ' 2').
+  Toont preview en vraagt bevestiging.
+author: 3BM Bouwkunde

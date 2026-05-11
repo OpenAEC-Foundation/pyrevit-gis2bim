@@ -1,6 +1,16 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 8 mei 2026*
+*Laatste update: 11 mei 2026*
+
+---
+
+## Kozijnstaat (mei 2026 sessie — pyRevit reload + test pending)
+
+- [ ] `KozijnstaatSync` pushbutton (optie B) — herbruikbare canvas→model param-sync zonder delete+recreate
+- [ ] Muursparing-instances die per ongeluk in workset `kozijnstaat` belanden — onderzoeken: komen uit `KozijnstaatWizard`?
+- [ ] `KozijnstaatGlasTag` / `KozijnstaatWindowTag` workset-aware maken (idem als Create) — annotaties moeten ook in workset `kozijnstaat`
+- [ ] Bij Create-output een waarschuwing tonen wanneer 1 type meerdere `sparing_type`-varianten heeft in het model (first-wins-flag)
+- [ ] Pyrevit Routes API stabiliteit — valt soms uit na heavy `execute_revit_code` calls; herstartrecept documenteren
 
 ---
 
