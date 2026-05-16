@@ -460,41 +460,7 @@ def calculate_monthly_moisture(lagen, rsi, rse):
 # ==============================================================================
 # PDF RAPPORT GENERATIE
 # ==============================================================================
-REPORT_API_BASE = os.environ.get("BM_REPORT_API", "https://report.3bm.co.nl")
-REPORT_API_KEY = os.environ.get("BM_REPORT_API_KEY", "")
-
-# API key cache (blijft geldig zolang pyRevit draait)
-_api_key = None
-
-
-def _get_api_key():
-    """Haal de API key op voor de Report API.
-
-    Gebruikt BM_REPORT_API_KEY environment variable.
-    Als die niet gezet is, vraagt een prompt om de key.
-
-    Returns:
-        API key string
-
-    Raises:
-        Exception bij geannuleerde invoer
-    """
-    global _api_key
-    if _api_key:
-        return _api_key
-
-    key = REPORT_API_KEY
-
-    if not key:
-        key = forms.ask_for_string(
-            prompt="API key voor report.3bm.co.nl (begint met 3bm_k_):",
-            title="API Key"
-        )
-        if not key:
-            raise Exception("API key invoer geannuleerd")
-
-    _api_key = key
-    return _api_key
+REPORT_API_URL = "https://report.open-aec.com/api/generate/v2"
 
 
 def capture_3d_view(view_name="3D IFC export"):
@@ -868,24 +834,24 @@ def generate_pdf_report(lagen, rsi, rse, ti, te, rhi, rhe, rc_total, u_value,
     with open(debug_path, 'wb') as f:
         f.write(json_str.encode('utf-8'))
 
-    # API key ophalen
-    api_key = _get_api_key()
+    api_key = os.environ.get('OPENAEC_REPORTS_API_KEY')
+    if not api_key:
+        raise Exception(
+            "OPENAEC_REPORTS_API_KEY environment variable niet gezet.\n"
+            "Stel in via Windows Systeemvariabelen of run:\n"
+            "  setx OPENAEC_REPORTS_API_KEY \"<jouw-key>\"\n"
+            "en herstart Revit."
+        )
 
-    generate_url = "{}/api/generate/v2".format(REPORT_API_BASE)
     client = WebClient()
     client.Headers.Add("Content-Type", "application/json; charset=utf-8")
     client.Headers.Add("X-API-Key", api_key)
-    response_bytes = client.UploadData(generate_url, "POST", json_bytes)
+    response_bytes = client.UploadData(REPORT_API_URL, "POST", json_bytes)
 
     # Controleer content type
     content_type = client.ResponseHeaders.Get("Content-Type") or ""
     if "application/pdf" not in content_type:
         error_text = Encoding.UTF8.GetString(response_bytes)
-        # Bij 401 (ongeldige key): key resetten en opnieuw proberen
-        if "401" in error_text or "Niet ingelogd" in error_text or "verlopen" in error_text:
-            global _api_key
-            _api_key = None
-            raise Exception("Ongeldige API key — probeer opnieuw")
         raise Exception("API fout: {}".format(error_text))
 
     # PDF opslaan
