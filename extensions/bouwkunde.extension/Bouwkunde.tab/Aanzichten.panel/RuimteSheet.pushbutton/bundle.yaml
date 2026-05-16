@@ -1,0 +1,7 @@
+title: "Ruimte\nSheet"
+tooltip: >-
+  Selecteer een ruimte. Genereert per wand een loodrecht aanzicht,
+  plus plattegrond en plafondaanzicht, allemaal op 1:20. Plaatst
+  alles op een nieuwe sheet. Templates en sheetgegevens via UI.
+author: 3BM Bouwkunde
+highlight: new

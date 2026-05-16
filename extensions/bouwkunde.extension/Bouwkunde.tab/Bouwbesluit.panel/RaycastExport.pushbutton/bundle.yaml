@@ -1,4 +1,4 @@
-title: Warmteverlies\nExport
+title: "Warmteverlies\nExport"
 tooltip: >-
   Exporteert de thermische schil via raycast scanning.
   Detecteert cross-model laagopbouw, spouwen en terminals en
