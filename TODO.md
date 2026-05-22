@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 11 mei 2026*
+*Laatste update: 22 mei 2026*
 
 ---
 
@@ -11,6 +11,44 @@
 - [ ] `KozijnstaatGlasTag` / `KozijnstaatWindowTag` workset-aware maken (idem als Create) — annotaties moeten ook in workset `kozijnstaat`
 - [ ] Bij Create-output een waarschuwing tonen wanneer 1 type meerdere `sparing_type`-varianten heeft in het model (first-wins-flag)
 - [ ] Pyrevit Routes API stabiliteit — valt soms uit na heavy `execute_revit_code` calls; herstartrecept documenteren
+
+---
+
+## Warmteverlies-exporter — code-audit 2026-05-22
+
+> Read-only audit van `raycast_scanner.py` + `thermal_json_builder.py` + `RaycastExport.pushbutton` (consument-keten: open-heatloss-studio thermal-import). 25 bevindingen; U4 deze sessie gefixt. Schema-afhankelijke items (D3/D4) staan in de open-heatloss-studio `TODO.md`.
+
+### Bugs (correctheid)
+- [x] ~~U4 — samenvatting telt op niet-bestaande sleutel `room_type` → "Export geslaagd" toont altijd "0 ruimten"~~ → `RaycastExport.pushbutton/script.py:376` `room_type`→`type` (2026-05-22)
+- [ ] B1 — `revit_type_name`/`revit_element_id` ontbreken op construction-dicts (`raycast_scanner.py:561-569,675-683`) → alle catalog-entries krijgen `revit_type_name=None`
+- [ ] B2 — geen phase-filter op rooms (`room_collector.py:37-61`) → gesloopte/bestaande-toestand ruimten lekken in de export
+- [ ] B3 — wand-`area_m2` is rechthoek-schatting width×height (`raycast_scanner.py:555-559`) → fout bij schuine/L-vormige faces
+- [ ] B4 — Room Separation Lines niet gefilterd op SEGC-faces (`raycast_scanner.py:295-313`) → separation-line-grens wordt als volwaardige wand gescand
+- [ ] B5 — laagdikte/spouw-gap fout bij `enter==exit` raycast-hit (`raycast_scanner.py:996-1032`)
+- [ ] B6 — link-detectie inconsistent (Title-vergelijk vs LinkedElementId) (`raycast_scanner.py:1786-1791`)
+- [ ] B7 — fragiele sentinel 1000/1500 in opening-afmetingen → `None`-sentinels gebruiken (`raycast_scanner.py:2353-2391`)
+- [ ] B8 — `exported_at` zonder timezone, schema verwacht RFC3339 (`thermal_json_builder.py:107`)
+
+### Datakwaliteit
+- [ ] D1 — `sill_height_mm` (kozijnhoogte) nooit geëxporteerd, z-range is al berekend (`raycast_scanner.py:1660-1671,1721-1732`)
+- [ ] D2 — geen room `boundary_polygon` → 3D-viewer in open-heatloss-studio blijft leeg; schema ondersteunt het al (`thermal_json_builder.py:176-191`)
+- [ ] D5 — multi-layer host-wand verliest laagopbouw, exporteert één materiaalnaam (`raycast_scanner.py:893-928`)
+- [ ] D6 — opening default-U (1.60/1.70) niet te onderscheiden van Revit-waarde → `u_value_source` toevoegen (`raycast_scanner.py:2437-2439`)
+- [ ] Verify — rooms in export-JSON hebben `function`/`floor_area_m2` = `None`; bepalen of dat hoort (worden in de import-wizard gezet) of een datagat is
+
+### UX pushbutton
+- [ ] U1 — geen preview/validatie vóór opslaan; samenvatting-dialoog + lokale schema-check toevoegen (`script.py:357-441`)
+- [ ] U2 — afgeleide functie + heated-status niet zichtbaar in ruimteselectie → misclassificatie onzichtbaar (`script.py:35-44`)
+- [ ] U3 — silent `return` bij scan-exception, reden niet gelogd (`raycast_scanner.py:69-72`)
+
+### Tech-debt
+- [ ] T1 — dode pushbuttons `_ThermalExport.pushbutton` + `_WarmteverliesExport.pushbutton` verwijderen
+- [ ] T2 — verifiëren welke lib-modules het raycast-pad nog gebruikt; `boundary_analyzer/adjacent_detector/wall_assembly_resolver/uvalue_extractor/opening_extractor` mogelijk legacy
+- [ ] T3 — dode `_collect_openings_from_hits` verwijderen (`raycast_scanner.py:1967-2082`, ~110 regels legacy)
+- [ ] T4 — DEBUG_OPENINGS-prints scheiden van kernlogica (`raycast_scanner.py:1510-1732`)
+- [ ] T5 — bare `except:` → `except Exception:` (`raycast_scanner.py:1531,1641,1698`)
+- [ ] T6 — `json_builder.py` — bepalen of nog een actieve pushbutton dit gebruikt, anders verwijderen
+- [ ] T7 — dubbele fingerprint-implementatie consolideren (`raycast_scanner.py:605-626` + `thermal_json_builder.py:241-266`)
 
 ---
 

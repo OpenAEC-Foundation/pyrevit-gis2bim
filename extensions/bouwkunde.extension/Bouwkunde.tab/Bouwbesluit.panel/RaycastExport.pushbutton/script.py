@@ -373,7 +373,7 @@ def run_raycast_export(doc):
     # Samenvatting
     total_rooms = len(
         [r for r in thermal_json.get("rooms", [])
-         if r.get("room_type") == "heated"]
+         if r.get("type") == "heated"]
     )
     total_constructions = len(
         thermal_json.get("constructions", [])
