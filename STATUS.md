@@ -1,18 +1,19 @@
 # 3BM pyRevit Project - Status
 
-*Laatste update: 11 mei 2026*
+*Laatste update: 24 mei 2026*
 
 ---
 
 ## Extensies Overzicht
 
-### bouwkunde.extension (18 tools)
+### bouwkunde.extension (19 tools)
 
 | Tool | Panel | UI Framework | Status | Beschrijving |
 |------|-------|--------------|--------|--------------|
 | RcBerekening | Bouwbesluit | WinForms | Stabiel | Rc/U-waarde + Glaser condensatie-analyse, PDF rapport |
 | VentilatieBalans | Bouwbesluit | WinForms | Stabiel | Ventilatiebalans per ruimtezone |
 | HellingbaanGenerator | Bouwbesluit | **WPF** | Stabiel | NEN 2443 hellingbanen met DirectShape |
+| TrapTekenen (Trap 2D) | Bouwbesluit | pyRevit forms | **WIP** | L-trap onderkwart 2D-plattegrond, 4 verdrijvingsmethoden, polygon-input (24 mei) |
 | AutoDim | Maatvoering | **WPF** | Stabiel | Automatische maatvoering via Detail Lines |
 | CrossDim | Maatvoering | WinForms | Stabiel | Kruislings dimensioneren |
 | WandVloerAfwerking | Afwerking | WinForms | Stabiel | Wand/vloer afwerkingslagen per ruimte |

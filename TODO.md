@@ -1,6 +1,24 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 22 mei 2026*
+*Laatste update: 24 mei 2026*
+
+---
+
+## TrapTekenen / Trap 2D (24 mei 2026 — wachten op hertest in Revit)
+
+- [ ] Hertest in Revit met L-sparing na concave-fix (interior_in_dir/interior_out_dir uit polygon-CCW)
+- [ ] Eigen icoon voor `TrapTekenen.pushbutton` (huidig: default pyRevit)
+- [ ] Vervang komma-gescheiden parameter-prompt door WPF-form met live preview
+- [ ] 2D-preview in pyRevit output window (HTML/SVG via `lib/trap/plot_svg.py`)
+- [ ] Spilpaal-circle visualiseren (cirkel met radius = inner_radius)
+- [ ] Boog-segmenten in sparing-curves correct ondersteunen (nu chord-approximatie)
+- [ ] Uitbreiden naar bovenkwart, U-trap (halve slag), spiltrap
+- [ ] Stap naar 3D: DirectShape (Generic Model) per trede met extrusion
+- [ ] IFC export-pad (`IfcStair` met `IfcStairFlight` + winders)
+- [ ] Native Revit Stairs API plaatsing (`StairsEditScope` + `CreateSketchedRun`)
+- [ ] Looplijn-curve verbeteren: gebruik tangent-boog tussen rechte loops i.p.v. boog rond spil
+- [ ] Echte Franse balanceermethode (méthode du balancement) i.p.v. simpele overlap-uitbreiding
+- [ ] Treden-export naar JSON in `%TEMP%\3bm_exchange\` voor downstream tools
 
 ---
 
