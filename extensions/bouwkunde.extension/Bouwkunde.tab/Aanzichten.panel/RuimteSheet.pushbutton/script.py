@@ -74,7 +74,7 @@ from Autodesk.Revit.DB import (
     Transaction,
     TransactionGroup,
     XYZ,
-    Line,
+    Transform,
     BoundingBoxXYZ,
     ElementId,
     ElementTransformUtils,
@@ -83,7 +83,7 @@ from Autodesk.Revit.DB import (
     FilteredElementCollector,
     FamilySymbol,
     Wall,
-    ElevationMarker,
+    ViewSection,
     ViewFamilyType,
     ViewFamily,
     ViewSheet,
@@ -101,7 +101,6 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 
 
 SCALE = 20
-MARKER_OFFSET_FT = 3.0   # afstand van wand tot marker, in ft (~915mm)
 WALL_MARGIN_FT = 1.0     # extra ruimte links/rechts/onder/boven crop
 ROOM_MARGIN_FT = 2.0     # margin rond room voor plattegrond/plafond
 
@@ -213,50 +212,6 @@ def _collect_titleblocks(doc):
     return out
 
 
-def _select_optional(label, items, name_func):
-    """Toon SelectFromList met items + '(geen)' optie. Returns elem of None."""
-    if not items:
-        return None
-    name_to_elem = {}
-    display = ["(geen template)"]
-    for it in items:
-        nm = name_func(it)
-        # bij dubbele namen suffix met id
-        if nm in name_to_elem:
-            nm = u"{0} [{1}]".format(nm, _id_int(it))
-        name_to_elem[nm] = it
-        display.append(nm)
-    pick = forms.SelectFromList.show(
-        display, title=label, button_name="Kies", multiselect=False,
-    )
-    if pick is None or pick == "(geen template)":
-        return None
-    return name_to_elem.get(pick)
-
-
-def _select_required(label, items, name_func):
-    if not items:
-        forms.alert(
-            "Geen items beschikbaar voor: {0}".format(label),
-            title="Fout",
-        )
-        return None
-    name_to_elem = {}
-    display = []
-    for it in items:
-        nm = name_func(it)
-        if nm in name_to_elem:
-            nm = u"{0} [{1}]".format(nm, _id_int(it))
-        name_to_elem[nm] = it
-        display.append(nm)
-    pick = forms.SelectFromList.show(
-        display, title=label, button_name="Kies", multiselect=False,
-    )
-    if pick is None:
-        return None
-    return name_to_elem.get(pick)
-
-
 def _tb_display(fs):
     fam = ""
     try:
@@ -264,6 +219,234 @@ def _tb_display(fs):
     except Exception:
         pass
     return u"{0} : {1}".format(fam, _name(fs))
+
+
+def _show_options_dialog(
+    room_label, n_walls, elev_tpls, plan_tpls, rcp_tpls, titleblocks,
+    default_sheet_number, default_sheet_name, default_scale,
+):
+    """Toon 3BM-gestylde dialog met alle keuzes.
+
+    Geeft dict terug met keys:
+      tpl_elev, tpl_plan, tpl_rcp (View of None),
+      titleblock (FamilySymbol of None),
+      sheet_number, sheet_name (string),
+      scale (int).
+    Bij annuleren: None.
+    """
+    from ui_template import (
+        BaseForm, UIFactory, DPIScaler, Huisstijl,
+    )
+    from System.Drawing import Point, Size
+    from System.Windows.Forms import (
+        AnchorStyles, ComboBox, ComboBoxStyle, Label,
+    )
+
+    GEEN = u"(geen template)"
+
+    def _items_for_combo(items, name_func, allow_none):
+        labels = []
+        if allow_none:
+            labels.append(GEEN)
+        used = {}
+        for it in items:
+            nm = name_func(it)
+            if nm in used:
+                nm = u"{0} [{1}]".format(nm, _id_int(it))
+            used[nm] = it
+            labels.append(nm)
+        return labels
+
+    def _resolve(combo, items, allow_none):
+        idx = combo.SelectedIndex
+        if idx < 0:
+            return None
+        if allow_none:
+            if idx == 0:
+                return None
+            return items[idx - 1] if (idx - 1) < len(items) else None
+        return items[idx] if idx < len(items) else None
+
+    class Dlg(BaseForm):
+        FORM_W = 620
+        FORM_H = 640
+        ROW_H = 38
+        LABEL_W = 150
+        INPUT_W = 380
+        GROUP_PAD_X = 15
+        GROUP_PAD_Y = 30
+        GROUP_W = 560
+
+        def __init__(self):
+            super(Dlg, self).__init__(
+                "Ruimte Sheet", self.FORM_W, self.FORM_H,
+            )
+            self.set_subtitle(
+                u"{0}  -  {1} wand-segmenten".format(
+                    room_label, n_walls,
+                )
+            )
+            self.confirmed = False
+            self.result = None
+            self._build()
+            # Footer: cancel-knop wordt 'Annuleer', primair = Genereren
+            try:
+                self.btn_close.Text = "Annuleer"
+            except Exception:
+                pass
+            self.add_footer_button(
+                "Genereren", "primary", self._on_ok, 150,
+            )
+
+        # ---- builders ----
+        def _build(self):
+            y = 0
+            gb_tpl = self._build_group_templates(y)
+            y += gb_tpl.Height + DPIScaler.scale(15)
+            gb_sheet = self._build_group_sheet(y)
+
+        def _build_group_templates(self, y):
+            gb = UIFactory.create_groupbox(
+                "Templates (optioneel)", self.GROUP_W, 175,
+            )
+            gb.Location = Point(0, DPIScaler.scale(y))
+            self.pnl_content.Controls.Add(gb)
+
+            row_y = self.GROUP_PAD_Y
+            self.cmb_elev = self._add_combo(
+                gb, row_y, "Aanzichten",
+                _items_for_combo(elev_tpls, _name, True),
+            )
+            row_y += self.ROW_H
+            self.cmb_plan = self._add_combo(
+                gb, row_y, "Plattegrond",
+                _items_for_combo(plan_tpls, _name, True),
+            )
+            row_y += self.ROW_H
+            self.cmb_rcp = self._add_combo(
+                gb, row_y, "Plafond",
+                _items_for_combo(rcp_tpls, _name, True),
+            )
+            return gb
+
+        def _build_group_sheet(self, y):
+            gb = UIFactory.create_groupbox(
+                "Sheet", self.GROUP_W, 220,
+            )
+            gb.Location = Point(0, DPIScaler.scale(y))
+            self.pnl_content.Controls.Add(gb)
+
+            row_y = self.GROUP_PAD_Y
+            tb_labels = _items_for_combo(
+                titleblocks, _tb_display, False,
+            )
+            self.cmb_tb = self._add_combo(
+                gb, row_y, "Titleblock", tb_labels,
+            )
+            row_y += self.ROW_H
+
+            self.tb_number = self._add_textbox(
+                gb, row_y, "Sheet nummer", default_sheet_number,
+            )
+            row_y += self.ROW_H
+
+            self.tb_name = self._add_textbox(
+                gb, row_y, "Sheet naam", default_sheet_name,
+            )
+            row_y += self.ROW_H
+
+            self.tb_scale = self._add_textbox(
+                gb, row_y, "Schaal 1:", str(default_scale), width=80,
+            )
+
+            return gb
+
+        # ---- row helpers ----
+        def _add_combo(self, parent, y, label_text, labels):
+            lbl = UIFactory.create_label(label_text)
+            lbl.Location = Point(
+                DPIScaler.scale(self.GROUP_PAD_X),
+                DPIScaler.scale(y + 6),
+            )
+            lbl.Width = DPIScaler.scale(self.LABEL_W)
+            parent.Controls.Add(lbl)
+
+            cmb = UIFactory.create_combobox(self.INPUT_W)
+            cmb.Location = Point(
+                DPIScaler.scale(self.GROUP_PAD_X + self.LABEL_W),
+                DPIScaler.scale(y),
+            )
+            for s in labels:
+                cmb.Items.Add(s)
+            if cmb.Items.Count > 0:
+                cmb.SelectedIndex = 0
+            parent.Controls.Add(cmb)
+            return cmb
+
+        def _add_textbox(self, parent, y, label_text, default, width=None):
+            lbl = UIFactory.create_label(label_text)
+            lbl.Location = Point(
+                DPIScaler.scale(self.GROUP_PAD_X),
+                DPIScaler.scale(y + 6),
+            )
+            lbl.Width = DPIScaler.scale(self.LABEL_W)
+            parent.Controls.Add(lbl)
+
+            w = width if width is not None else self.INPUT_W
+            tb = UIFactory.create_textbox(w)
+            tb.Text = default or ""
+            tb.Location = Point(
+                DPIScaler.scale(self.GROUP_PAD_X + self.LABEL_W),
+                DPIScaler.scale(y),
+            )
+            parent.Controls.Add(tb)
+            return tb
+
+        # ---- actions ----
+        def _on_ok(self, sender, args):
+            number = (self.tb_number.Text or "").strip()
+            name = (self.tb_name.Text or "").strip()
+            scale_txt = (self.tb_scale.Text or "").strip()
+            if not number:
+                self.show_error("Sheet nummer is verplicht.")
+                return
+            if not name:
+                self.show_error("Sheet naam is verplicht.")
+                return
+            try:
+                scale = int(scale_txt)
+                if scale <= 0:
+                    raise ValueError("schaal moet > 0 zijn")
+            except Exception:
+                self.show_error(
+                    "Ongeldige schaal: '{0}'".format(scale_txt)
+                )
+                return
+            tb = _resolve(self.cmb_tb, titleblocks, False)
+            if tb is None and titleblocks:
+                self.show_error("Kies een titleblock.")
+                return
+            self.result = {
+                "tpl_elev": _resolve(self.cmb_elev, elev_tpls, True),
+                "tpl_plan": _resolve(self.cmb_plan, plan_tpls, True),
+                "tpl_rcp": _resolve(self.cmb_rcp, rcp_tpls, True),
+                "titleblock": tb,
+                "sheet_number": number,
+                "sheet_name": name,
+                "scale": scale,
+            }
+            self.confirmed = True
+            self.Close()
+
+    dlg = Dlg()
+    try:
+        dlg.ShowDialog()
+    except Exception as ex:
+        _log_exc("dialog failed: {0}".format(ex))
+        return None
+    if not dlg.confirmed:
+        return None
+    return dlg.result
 
 
 # ---------------------------------------------------------------- boundary
@@ -346,85 +529,91 @@ def _wall_height_ft(wall):
 
 
 def _create_wall_elevation(
-    doc, plan_view_id, vft_elev_id, wall, curve_seg,
+    doc, plan_view_id, vft_section_id, wall, curve_seg,
     room_center, level_elev_ft, scale, template_id,
 ):
-    """Maak 1 binnen-elevation loodrecht op het wand-segment.
+    """Maak 1 binnen-aanzicht van de ruimte naar de wand.
 
-    - marker geplaatst aan room-zijde van de wand, op `MARKER_OFFSET_FT`
-      van de wand af.
-    - marker gedraaid zodat index 0 NAAR de wand kijkt.
-    - crop ingesteld op segment-lengte (+ margin) horizontaal,
-      en wandhoogte (+ margin) verticaal.
+    Implementatie als ViewSection (niet ElevationMarker) voor
+    deterministische orientatie:
+    - Origin = room_center, op vloer-niveau (level_elev_ft).
+    - View direction = (room_center -> wall-midpoint) in XY.
+    - Camera staat dus letterlijk in het midden van de ruimte en
+      kijkt naar de wand. Geen marker-rotatie nodig.
+    - Cropbox:
+        X = langs wand (view-rechts), van wand-eindpunten + margin
+        Y = vloer tot wandhoogte + margin
+        Z = depth (camera-zijde + tot iets voorbij wand)
     """
     p0 = curve_seg.GetEndPoint(0)
     p1 = curve_seg.GetEndPoint(1)
     seg_len = p0.DistanceTo(p1)
     if seg_len < 1e-6:
         return None
-    seg_dir = XYZ(
-        (p1.X - p0.X) / seg_len,
-        (p1.Y - p0.Y) / seg_len,
-        0.0,
-    )
-    seg_mid = XYZ(
-        (p0.X + p1.X) / 2.0,
-        (p0.Y + p1.Y) / 2.0,
-        (p0.Z + p1.Z) / 2.0,
-    )
+    seg_mid_x = (p0.X + p1.X) / 2.0
+    seg_mid_y = (p0.Y + p1.Y) / 2.0
 
-    # twee perpendiculairen in XY-vlak
-    perp_a = XYZ(-seg_dir.Y, seg_dir.X, 0.0)
-    to_center = XYZ(
-        room_center.X - seg_mid.X,
-        room_center.Y - seg_mid.Y,
-        0.0,
-    )
-    if perp_a.DotProduct(to_center) >= 0:
-        room_normal = perp_a   # wijst INTO room
-    else:
-        room_normal = XYZ(seg_dir.Y, -seg_dir.X, 0.0)
+    # View direction in XY: room_center -> wall midpoint
+    dx = seg_mid_x - room_center.X
+    dy = seg_mid_y - room_center.Y
+    dist = math.sqrt(dx * dx + dy * dy)
+    if dist < 1e-6:
+        _log("wand midden valt samen met room center; skip")
+        return None
+    vd_x = dx / dist
+    vd_y = dy / dist
 
-    # Marker in de room geplaatst, marker view direction = -room_normal
-    marker_pt = XYZ(
-        seg_mid.X + room_normal.X * MARKER_OFFSET_FT,
-        seg_mid.Y + room_normal.Y * MARKER_OFFSET_FT,
-        level_elev_ft + 1.0,
-    )
+    # Section box frame:
+    #   BasisZ = -view_dir  (uit view, naar camera)
+    #   BasisY = +world Z   (up)
+    #   BasisX = BasisY x BasisZ = (-vd.Y, vd.X, 0)  (view-rechts, 90° CCW
+    #                                                  van view_dir in XY)
+    basis_z = XYZ(-vd_x, -vd_y, 0.0)
+    basis_y = XYZ(0.0, 0.0, 1.0)
+    basis_x = XYZ(-vd_y, vd_x, 0.0)
 
-    marker = ElevationMarker.CreateElevationMarker(
-        doc, vft_elev_id, marker_pt, scale,
-    )
+    # Origin = room_center op vloer-Z (camera positie)
+    origin = XYZ(room_center.X, room_center.Y, level_elev_ft)
 
-    # Default index 0 view direction is +X richting (geverifieerd via
-    # rotation=0). We willen view-direction = -room_normal, dus
-    # roteer marker met angle = atan2(-room_normal.Y, -room_normal.X).
-    view_dir = XYZ(-room_normal.X, -room_normal.Y, 0.0)
-    angle = math.atan2(view_dir.Y, view_dir.X)
-    if abs(angle) > 1e-9:
-        axis = Line.CreateBound(
-            marker_pt,
-            XYZ(marker_pt.X, marker_pt.Y, marker_pt.Z + 1.0),
-        )
-        try:
-            ElementTransformUtils.RotateElement(
-                doc, marker.Id, axis, angle,
-            )
-        except Exception as ex:
-            _log("RotateElement marker failed: {0}".format(ex))
+    # Wand-eindpunten in view-locale X
+    p0_lx = (p0.X - origin.X) * basis_x.X + (p0.Y - origin.Y) * basis_x.Y
+    p1_lx = (p1.X - origin.X) * basis_x.X + (p1.Y - origin.Y) * basis_x.Y
+    x_min = min(p0_lx, p1_lx) - WALL_MARGIN_FT
+    x_max = max(p0_lx, p1_lx) + WALL_MARGIN_FT
 
-    elev = marker.CreateElevation(doc, plan_view_id, 0)
+    # Y: vloer (origin Z = level_elev) tot wand-hoogte + margin
+    wall_h = _wall_height_ft(wall)
+    y_min = -WALL_MARGIN_FT
+    y_max = wall_h + WALL_MARGIN_FT
+
+    # Z: depth — far (in scene, voorbij wand) tot iets achter camera.
+    # Wand bevindt zich op view-local Z = -dist (negatief, in scene).
+    z_min = -(dist + WALL_MARGIN_FT + 3.0)   # ~1m voorbij wand
+    z_max = WALL_MARGIN_FT                    # iets achter camera
+
+    transform = Transform.Identity
+    transform.Origin = origin
+    transform.BasisX = basis_x
+    transform.BasisY = basis_y
+    transform.BasisZ = basis_z
+
+    section_box = BoundingBoxXYZ()
+    section_box.Transform = transform
+    section_box.Min = XYZ(x_min, y_min, z_min)
+    section_box.Max = XYZ(x_max, y_max, z_max)
+
+    elev = ViewSection.CreateSection(doc, vft_section_id, section_box)
     if elev is None:
         return None
 
-    # Naam zetten
+    # Naam
     try:
         wall_name = _name(wall) or "Wand"
         wall_id = _id_int(wall)
         new_name = u"Aanzicht {0} - id{1}".format(wall_name, wall_id)
         elev.Name = _unique_view_name(doc, new_name)
     except Exception as ex:
-        _log("rename elevation failed: {0}".format(ex))
+        _log("rename aanzicht failed: {0}".format(ex))
 
     # Schaal
     try:
@@ -437,23 +626,13 @@ def _create_wall_elevation(
         try:
             elev.ViewTemplateId = template_id
         except Exception as ex:
-            _log("apply elevation template failed: {0}".format(ex))
+            _log("apply aanzicht template failed: {0}".format(ex))
 
-    # Crop op segment+wand-hoogte. Werkt in view-locale coords:
-    # X = view RightDirection (langs wand), Y = view UpDirection (omhoog),
-    # Z = view ViewDirection (uit view, dus -Z is naar wand).
-    try:
-        wall_h = _wall_height_ft(wall)
-        half_len = seg_len / 2.0 + WALL_MARGIN_FT
-        bb = BoundingBoxXYZ()
-        bb.Min = XYZ(-half_len, -WALL_MARGIN_FT, -1.0)
-        bb.Max = XYZ(half_len, wall_h + WALL_MARGIN_FT, 5.0)
-        elev.CropBox = bb
-        elev.CropBoxActive = True
-        elev.CropBoxVisible = True
-    except Exception as ex:
-        _log("set elevation cropbox failed: {0}".format(ex))
-
+    _log(
+        "section view: dist={0:.2f}ft (={1:.0f}mm) "
+        "viewdir=({2:.3f},{3:.3f}) wall_h={4:.2f}ft"
+        .format(dist, dist * 304.8, vd_x, vd_y, wall_h)
+    )
     return elev
 
 
@@ -700,9 +879,11 @@ def run():
         )
         return
 
-    # 3. UI - templates + titleblock + sheet info
+    # 3. UI - alle keuzes in 1 dialog (3BM huisstijl)
+    # Aanzichten worden gemaakt als Section views (view origin = room
+    # center), dus template-collectie is op ViewType.Section.
     elev_tpls = _collect_templates(
-        doc, set([ViewType.Elevation]),
+        doc, set([ViewType.Section]),
     )
     plan_tpls = _collect_templates(
         doc, set([ViewType.FloorPlan]),
@@ -713,52 +894,49 @@ def run():
     titleblocks = _collect_titleblocks(doc)
 
     output.print_md(
-        "Templates beschikbaar - elevation:{0} floor:{1} ceiling:{2}"
+        "Templates beschikbaar - section:{0} floor:{1} ceiling:{2}"
         .format(len(elev_tpls), len(plan_tpls), len(rcp_tpls))
     )
 
-    tpl_elev = _select_optional(
-        "Kies template voor AANZICHTEN", elev_tpls, _name,
-    )
-    tpl_plan = _select_optional(
-        "Kies template voor PLATTEGROND", plan_tpls, _name,
-    )
-    tpl_rcp = _select_optional(
-        "Kies template voor PLAFOND", rcp_tpls, _name,
-    )
-
-    tb_id = ElementId.InvalidElementId
-    if titleblocks:
-        tb = _select_required(
-            "Kies titleblock voor sheet", titleblocks, _tb_display,
+    if not titleblocks:
+        forms.alert(
+            "Geen titleblock-types in dit project.",
+            title="Fout",
         )
-        if tb is None:
-            output.print_md("*Geen titleblock gekozen - afgebroken.*")
-            return
-        tb_id = tb.Id
-
-    # Sheet number + name via prompt
-    default_number = "fase_601"
-    sheet_number = forms.ask_for_string(
-        default=default_number,
-        prompt="Sheet nummer (format: fase_6xx):",
-        title="Ruimte Sheet - nummer",
-    )
-    if not sheet_number:
-        return
-    sheet_name = forms.ask_for_string(
-        default=room_name,
-        prompt="Sheet naam:",
-        title="Ruimte Sheet - naam",
-    )
-    if not sheet_name:
         return
 
-    # 4. ViewFamilyType voor elevations
-    vft_elev = _get_view_family_type(doc, ViewFamily.Elevation)
+    room_label = u"{0}".format(room_name)
+    if room_number:
+        room_label = u"{0} (nr {1})".format(room_name, room_number)
+
+    choices = _show_options_dialog(
+        room_label=room_label,
+        n_walls=len(wall_segs),
+        elev_tpls=elev_tpls,
+        plan_tpls=plan_tpls,
+        rcp_tpls=rcp_tpls,
+        titleblocks=titleblocks,
+        default_sheet_number="fase_601",
+        default_sheet_name=room_name,
+        default_scale=SCALE,
+    )
+    if choices is None:
+        output.print_md("*Geannuleerd.*")
+        return
+
+    tpl_elev = choices["tpl_elev"]
+    tpl_plan = choices["tpl_plan"]
+    tpl_rcp = choices["tpl_rcp"]
+    tb_id = choices["titleblock"].Id
+    sheet_number = choices["sheet_number"]
+    sheet_name = choices["sheet_name"]
+    scale = choices["scale"]
+
+    # 4. ViewFamilyType voor sections (aanzichten als ViewSection)
+    vft_elev = _get_view_family_type(doc, ViewFamily.Section)
     if vft_elev is None:
         forms.alert(
-            "Geen ViewFamilyType voor Elevation gevonden.",
+            "Geen ViewFamilyType voor Section gevonden.",
             title="Fout",
         )
         return
@@ -818,7 +996,7 @@ def run():
                     ev = _create_wall_elevation(
                         doc, owner_plan.Id, vft_elev.Id,
                         wall, curve_seg, room_center,
-                        level_elev, SCALE, tpl_elev_id,
+                        level_elev, scale, tpl_elev_id,
                     )
                     if ev is not None:
                         elevations.append(ev)
@@ -838,7 +1016,7 @@ def run():
         try:
             plan_view = _create_room_plan(
                 doc, room, level_id, ViewType.FloorPlan,
-                SCALE, tpl_plan_id, "plattegrond",
+                scale, tpl_plan_id, "plattegrond",
             )
             tx.Commit()
         except Exception:
@@ -852,7 +1030,7 @@ def run():
         try:
             rcp_view = _create_room_plan(
                 doc, room, level_id, ViewType.CeilingPlan,
-                SCALE, tpl_rcp_id, "plafond",
+                scale, tpl_rcp_id, "plafond",
             )
             tx.Commit()
         except Exception:

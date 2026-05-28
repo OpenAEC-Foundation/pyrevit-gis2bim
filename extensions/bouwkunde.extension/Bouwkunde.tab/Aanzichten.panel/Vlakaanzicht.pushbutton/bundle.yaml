@@ -1,0 +1,7 @@
+title: "Vlak\nAanzicht"
+tooltip: >-
+  Selecteer een vlak (schuin dak, slanted wall, hellende vloer, plafond, ...).
+  Genereert een section view met parallelle projectie loodrecht op dat vlak.
+  Crop automatisch passend rond het element.
+author: 3BM Bouwkunde
+highlight: new
