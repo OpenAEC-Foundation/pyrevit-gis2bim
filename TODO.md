@@ -32,6 +32,23 @@
 
 ---
 
+## Warmteverlies — pre-export visuele check (pushbutton) — idee 2026-05-30
+
+> Nieuw feature-idee (sessie 30-05, geprototyped via Revit MCP op `2786_Bouwkundige_model`). Doel: de gebruiker krijgt vóór JSON-export een **visuele controle** van wat de exporter "ziet" — gekleurde SEGC-grensvlakken per ruimte, direct in een 3D-view.
+
+- [ ] **`WarmteverliesPreview.pushbutton`** naast de bestaande Export-knop (`Bouwbesluit.panel`) — rendert per ruimte de SEGC-grensvlakken als gekleurde DirectShapes (Generic Models, Comments-prefix `WV_BND`).
+  - Kleur per oriëntatie: **rood** = dak/plafond (n.Z > 0,7), **geel** = wand, **blauw** = vloer (n.Z < −0,7).
+  - **Host-loze wand-slivers verbergen** (`GetBoundaryFaceInfo Count == 0` + verticaal) — spiegelt de exporter-skip (commit `39c6768`); horizontale host-loze vlakken wél tonen (raycast vindt pakket).
+  - [ ] **Openingen detecteren en apart kleuren** (deuren/ramen/vliesgevels) — via `Wall.FindInserts` op de host-wand (hergebruik Bug F-logica, commit `055d57e`) + curtain panels. Aparte kleur zodat de gebruiker ziet of openingen correct herkend worden.
+  - [ ] **Clear-knop** of toggle: verwijder alle DirectShapes met Comments-prefix `WV_BND`.
+- **Ontwerpregel (KRITISCH):** preview en export MOETEN dezelfde face-extractie/-filter/-groepering delen (`_get_faces_from_segc` + #3-host-groepering). Aparte implementatie = divergentie = onbetrouwbare check.
+- **Volgorde:** eerst #3 (host-element-groepering) + #5 (vliesgevel → `curtain_wall`) perfectioneren, dán de preview bovenop die gedeelde code — dan toont de preview meteen de gegroepeerde, schone constructies.
+- **Blauwdruk:** de MCP-prototype-code uit sessie 30-05 (oriëntatie-classificatie + `TessellatedShapeBuilder` per face + 3 materials `WV_BND_TOP/WALL/BOT` + host-loos-skip). Zie `docs/2026-05-29-warmteverlies-exporter-bevindingen.md`.
+- **Modelvereiste die deze sessie bevestigd is:** afwerk-/afschotvloeren **niet-room-bounding**, dragende constructievloer wél → halveert de fragmentatie aan de bron (vloer overal 1 vlak). Hoort als modelvereiste bij bevinding #6.
+- Relatie: vervangt/verrijkt audit-item **U1** (was: tekst-dialoog preview) met een echte 3D-visuele check; levert ook visuele validatie voor **D2** (boundary_polygon).
+
+---
+
 ## Warmteverlies-exporter — code-audit 2026-05-22
 
 > Read-only audit van `raycast_scanner.py` + `thermal_json_builder.py` + `RaycastExport.pushbutton` (consument-keten: open-heatloss-studio thermal-import). 25 bevindingen; U4 deze sessie gefixt. Schema-afhankelijke items (D3/D4) staan in de open-heatloss-studio `TODO.md`.
