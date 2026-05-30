@@ -15,6 +15,8 @@ Alle DirectShapes krijgen Comments-prefix "WV_BND" voor cleanup.
 
 IronPython 2.7 — geen f-strings, geen type hints.
 """
+import os
+
 from System.Collections.Generic import List, IList
 
 from Autodesk.Revit.DB import (
@@ -70,6 +72,49 @@ HOLE_CLAMP_MARGIN_FT = 0.01
 SQFT_TO_M2 = 0.092903
 
 OPENING_CATEGORIES = ("Doors", "Windows")
+
+# Meter -> feet (interne Revit-eenheid)
+METER_TO_FEET = 1.0 / 0.3048
+
+# Adjacency-probe: offsets (meter) naar buiten langs de face-normaal, door de
+# gestapelde constructie-dikte heen, om de buurruimte te vinden.
+ADJ_PROBE_OFFSETS_M = (0.10, 0.20, 0.35, 0.50, 0.75, 1.0)
+
+# Inwaartse offset (meter) om de normaal-richting te ijken op de bron-ruimte.
+ADJ_INWARD_CHECK_M = 0.15
+
+# Ruimte-naam-patronen die buitenlucht voorstellen: een door de probe gevonden
+# ruimte met zo'n naam telt als exterior, niet als unheated_space.
+# (case-insensitive substring-match, whitespace gestript)
+OUTDOOR_ROOM_NAME_PATTERNS = ("buiten",)
+
+# =============================================================================
+# Shared parameters (adjacency-info op de DirectShapes)
+# =============================================================================
+# Groep in het shared-parameter-bestand
+SHARED_PARAM_GROUP = "Berekeningen"
+
+# (naam, type_key)  type_key in {"text", "number"}
+WV_PARAM_DEFS = (
+    ("warmteverlies_ruimte", "text"),
+    ("warmteverlies_naar_ruimte", "text"),
+    ("warmteverlies_grenstype", "text"),
+    ("warmteverlies_orientatie", "text"),
+    ("warmteverlies_oppervlak_m2", "number"),
+    ("warmteverlies_host_type", "text"),
+)
+
+# orient (intern) -> NL label voor warmteverlies_orientatie
+ORIENT_LABEL = {
+    "top": "dak",
+    "bot": "vloer",
+    "wall": "wand",
+    "vliesgevel": "opening",
+    "open": "opening",
+}
+
+# Module-flag: parameters al gebonden in deze sessie (idempotent fast-path)
+_wv_params_created = False
 
 
 # =============================================================================
@@ -679,6 +724,449 @@ def _room_center(room_element):
 
 
 # =============================================================================
+# Shared-parameter aanmaken / binden
+# =============================================================================
+def _wv_create_param_options(name, type_key):
+    """Maak ExternalDefinitionCreationOptions (version-safe, R2025).
+
+    Args:
+        name: parameternaam
+        type_key: "text" of "number"
+
+    Returns:
+        ExternalDefinitionCreationOptions
+    """
+    from Autodesk.Revit.DB import ExternalDefinitionCreationOptions
+
+    try:
+        from Autodesk.Revit.DB import SpecTypeId
+        if type_key == "number":
+            return ExternalDefinitionCreationOptions(name, SpecTypeId.Number)
+        return ExternalDefinitionCreationOptions(name, SpecTypeId.String.Text)
+    except (ImportError, AttributeError):
+        pass
+
+    from Autodesk.Revit.DB import ParameterType as RevitPT
+    if type_key == "number":
+        return ExternalDefinitionCreationOptions(name, RevitPT.Number)
+    return ExternalDefinitionCreationOptions(name, RevitPT.Text)
+
+
+def _wv_bind_parameter(doc, binding_map, definition, binding):
+    """Bind een parameter aan het document (version-safe, R2025).
+
+    Properties-palette groep: Data (PG_DATA / GroupTypeId.Data).
+    """
+    try:
+        from Autodesk.Revit.DB import GroupTypeId
+        binding_map.Insert(definition, binding, GroupTypeId.Data)
+        return
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        from Autodesk.Revit.DB import BuiltInParameterGroup
+        binding_map.Insert(
+            definition, binding, BuiltInParameterGroup.PG_DATA
+        )
+        return
+    except Exception:
+        pass
+
+    binding_map.Insert(definition, binding)
+
+
+def ensure_warmteverlies_parameters(doc):
+    """Zorg dat de 6 warmteverlies_ shared parameters bestaan op GenericModel.
+
+    Maakt (idempotent) deze instance shared parameters aan, gebonden aan
+    de categorie Generic Models (OST_GenericModel — DirectShapes):
+        warmteverlies_ruimte        (text)
+        warmteverlies_naar_ruimte   (text)
+        warmteverlies_grenstype     (text)
+        warmteverlies_orientatie    (text)
+        warmteverlies_oppervlak_m2  (number)
+        warmteverlies_host_type     (text)
+
+    Groep in het shared-parameter-bestand: "Berekeningen".
+    Properties-palette groep: Data.
+
+    MOET binnen een open Transaction worden aangeroepen (BindingMap.Insert
+    + doc.Regenerate vereisen dit). render_room_boundaries draait al binnen
+    de transactie van de pushbutton, dus deze functie opent géén eigen
+    transactie maar bindt direct in de ambient transactie.
+
+    Args:
+        doc: Revit Document
+
+    Returns:
+        bool: True bij succes
+    """
+    global _wv_params_created
+    if _wv_params_created:
+        return True
+
+    from Autodesk.Revit.DB import BuiltInCategory as _BIC
+
+    app = doc.Application
+
+    # Welke parameternamen zijn al gebonden?
+    existing = set()
+    binding_map = doc.ParameterBindings
+    it = binding_map.ForwardIterator()
+    while it.MoveNext():
+        try:
+            existing.add(it.Key.Name)
+        except Exception:
+            continue
+
+    needed = [(n, t) for n, t in WV_PARAM_DEFS if n not in existing]
+    if not needed:
+        _wv_params_created = True
+        return True
+
+    original_spf = ""
+    try:
+        original_spf = app.SharedParametersFilename
+    except Exception:
+        pass
+
+    try:
+        temp_dir = os.environ.get(
+            "TEMP",
+            os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp"),
+        )
+        temp_path = os.path.join(temp_dir, "Warmteverlies_SharedParams.txt")
+
+        if not os.path.exists(temp_path):
+            f = open(temp_path, "w")
+            f.close()
+
+        app.SharedParametersFilename = temp_path
+        def_file = app.OpenSharedParameterFile()
+
+        # Zoek of maak de groep "Berekeningen"
+        group = None
+        for g in def_file.Groups:
+            if g.Name == SHARED_PARAM_GROUP:
+                group = g
+                break
+        if group is None:
+            group = def_file.Groups.Create(SHARED_PARAM_GROUP)
+
+        # Categorie-set: Generic Models
+        cat_set = app.Create.NewCategorySet()
+        gm_cat = doc.Settings.Categories.get_Item(_BIC.OST_GenericModel)
+        cat_set.Insert(gm_cat)
+
+        for param_name, type_key in needed:
+            definition = None
+            for d in group.Definitions:
+                if d.Name == param_name:
+                    definition = d
+                    break
+            if definition is None:
+                opts = _wv_create_param_options(param_name, type_key)
+                definition = group.Definitions.Create(opts)
+
+            binding = app.Create.NewInstanceBinding(cat_set)
+            _wv_bind_parameter(doc, binding_map, definition, binding)
+
+        doc.Regenerate()
+        _wv_params_created = True
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            if original_spf:
+                app.SharedParametersFilename = original_spf
+        except Exception:
+            pass
+
+
+# =============================================================================
+# Adjacency-bepaling per DirectShape
+# =============================================================================
+def _innermost_host_type_name(doc, host_ids):
+    """Bepaal de Type-naam van het innerste host-element.
+
+    Het innerste host-element is het eerste geldige element in de stapel
+    (SEGC levert sub_faces van binnen naar buiten). Eén Type, niet de
+    hele stapel.
+
+    Args:
+        doc: Revit Document
+        host_ids: iterable van host element-id integers
+
+    Returns:
+        str: Type-naam, of "" als onbekend
+
+    Let op: `ElementType.Name` gooit in de IronPython-2.7.12-engine van Revit
+    een exception ("Name"). Gebruik daarom SYMBOL_NAME_PARAM, met
+    `Element.Name.__get__(...)` als fallback (die descriptor-vorm werkt wél
+    in deze engine).
+    """
+    from Autodesk.Revit.DB import BuiltInParameter, Element
+
+    for hid in host_ids:
+        try:
+            host_el = doc.GetElement(ElementId(hid))
+            if host_el is None:
+                continue
+            type_id = host_el.GetTypeId()
+            if type_id is None or type_id.IntegerValue <= 0:
+                continue
+            type_el = doc.GetElement(type_id)
+            if type_el is None:
+                continue
+
+            # 1) SYMBOL_NAME_PARAM (werkt voor WallType/FloorType/etc.)
+            try:
+                p = type_el.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+                if p is not None and p.HasValue:
+                    val = p.AsString()
+                    if val:
+                        return val
+            except Exception:
+                pass
+
+            # 2) Fallback: Element.Name descriptor-get
+            try:
+                val = Element.Name.__get__(type_el)
+                if val:
+                    return val
+            except Exception:
+                pass
+        except Exception:
+            continue
+    return ""
+
+
+def _room_phase(doc, room_element):
+    """Haal de fase op waarin een ruimte staat (vereist voor GetRoomAtPoint).
+
+    Args:
+        doc: Revit Document
+        room_element: Revit Room
+
+    Returns:
+        Phase-element of None
+    """
+    from Autodesk.Revit.DB import BuiltInParameter
+    try:
+        p = room_element.get_Parameter(BuiltInParameter.ROOM_PHASE)
+        if p is None:
+            return None
+        phase_id = p.AsElementId()
+        if phase_id is None or phase_id.IntegerValue <= 0:
+            return None
+        return doc.GetElement(phase_id)
+    except Exception:
+        return None
+
+
+def _face_centroid(face, outer_pts):
+    """Bepaal het zwaartepunt van een face.
+
+    Eerste keus: gemiddelde van de outer-loop punten. Fallback: gemiddelde
+    van de triangle-vertices (voor faces zonder bruikbare outer-loop).
+
+    Args:
+        face: Revit Face
+        outer_pts: list[XYZ] outer-loop punten (mag leeg/None zijn)
+
+    Returns:
+        XYZ of None
+    """
+    pts = outer_pts
+    if not pts:
+        pts = []
+        for tri in _face_to_triangles(face):
+            pts.append(tri[0])
+            pts.append(tri[1])
+            pts.append(tri[2])
+    if not pts:
+        return None
+    n = len(pts)
+    sx = sum(p.X for p in pts)
+    sy = sum(p.Y for p in pts)
+    sz = sum(p.Z for p in pts)
+    return XYZ(sx / n, sy / n, sz / n)
+
+
+def _room_at(doc, xyz, phase):
+    """GetRoomAtPoint met fase (zonder fase altijd None in deze modellen)."""
+    if xyz is None or phase is None:
+        return None
+    try:
+        return doc.GetRoomAtPoint(xyz, phase)
+    except Exception:
+        return None
+
+
+def _resolve_adjacency(doc, room_element, room_eid, face, normal, outer_pts,
+                       all_rooms, heated_room_ids, phase):
+    """Bepaal grenstype + buurruimte-label via geometrische probe.
+
+    Vanuit het zwaartepunt van het grensvlak wordt naar buiten gestapt langs
+    de (naar buiten wijzende) face-normaal. De eerste ruimte != bron-ruimte
+    die GetRoomAtPoint oplevert is de echte buur aan DIT vlak — werkt voor
+    wanden, vloeren (ruimte eronder) en daken/plafonds (ruimte erboven).
+
+    Args:
+        doc: Revit Document
+        room_element: Revit Room (bron-ruimte)
+        room_eid: element-id (int) van de bron-ruimte
+        face: Revit Face
+        normal: XYZ face-normaal (SEGC: wijst weg van het room-volume)
+        outer_pts: list[XYZ] outer-loop (voor zwaartepunt)
+        all_rooms: alle room-data dicts (voor heated-label fallback, niet vereist)
+        heated_room_ids: set van verwarmde room element-ids
+        phase: Phase-element van de bron-ruimte
+
+    Returns:
+        (grenstype, naar_ruimte_label)
+            grenstype in {exterior, adjacent_room, unheated_space}
+            (ground wordt door de caller bepaald voor vloeren op maaiveld)
+    """
+    centroid = _face_centroid(face, outer_pts)
+    if centroid is None or phase is None:
+        return ("exterior", "BUITEN")
+
+    # Normaal-richting borgen: een punt iets NAAR BINNEN (tegen de normaal in)
+    # moet de bron-ruimte opleveren. Zo niet -> normaal omdraaien.
+    inward = ADJ_INWARD_CHECK_M * METER_TO_FEET
+    outx, outy, outz = normal.X, normal.Y, normal.Z
+
+    p_in = XYZ(
+        centroid.X - outx * inward,
+        centroid.Y - outy * inward,
+        centroid.Z - outz * inward,
+    )
+    room_in = _room_at(doc, p_in, phase)
+    inward_hits_source = (
+        room_in is not None and room_in.Id.IntegerValue == room_eid
+    )
+    if not inward_hits_source:
+        # Probeer de andere kant: punt op +normaal moet bron-ruimte zijn
+        p_in2 = XYZ(
+            centroid.X + outx * inward,
+            centroid.Y + outy * inward,
+            centroid.Z + outz * inward,
+        )
+        room_in2 = _room_at(doc, p_in2, phase)
+        if room_in2 is not None and room_in2.Id.IntegerValue == room_eid:
+            # Normaal wees naar binnen -> omdraaien zodat hij naar buiten wijst
+            outx, outy, outz = -outx, -outy, -outz
+
+    # Naar buiten stappen door de constructie-dikte heen
+    for off_m in ADJ_PROBE_OFFSETS_M:
+        off = off_m * METER_TO_FEET
+        p = XYZ(
+            centroid.X + outx * off,
+            centroid.Y + outy * off,
+            centroid.Z + outz * off,
+        )
+        nbr = _room_at(doc, p, phase)
+        if nbr is None:
+            continue
+        nbr_eid = nbr.Id.IntegerValue
+        if nbr_eid == room_eid:
+            # Nog in de bron-ruimte (dunne sliver) -> verder stappen
+            continue
+
+        nbr_name = _get_room_name_safe(nbr)
+
+        # Buitenlucht-ruimte (bv. "Buiten") telt als exterior, niet als
+        # unheated_space. Buitenlucht is het eindpunt van de probe.
+        nbr_name_norm = nbr_name.strip().lower()
+        if any(pat in nbr_name_norm for pat in OUTDOOR_ROOM_NAME_PATTERNS):
+            return ("exterior", "BUITEN")
+
+        adj_label = "{0} {1}".format(
+            _get_room_number_safe(nbr),
+            nbr_name,
+        ).strip()
+        if nbr_eid in heated_room_ids:
+            return ("adjacent_room", adj_label)
+        return ("unheated_space", "ONVERWARMD:" + adj_label)
+
+    # Niets gevonden -> buiten
+    return ("exterior", "BUITEN")
+
+
+def _get_room_number_safe(room):
+    """Room-nummer (BuiltInParameter), met fallback op element-id."""
+    from Autodesk.Revit.DB import BuiltInParameter
+    try:
+        p = room.get_Parameter(BuiltInParameter.ROOM_NUMBER)
+        if p is not None and p.HasValue:
+            v = p.AsString()
+            if v:
+                return v
+    except Exception:
+        pass
+    return str(room.Id.IntegerValue)
+
+
+def _get_room_name_safe(room):
+    """Room-naam (BuiltInParameter), met lege fallback."""
+    from Autodesk.Revit.DB import BuiltInParameter
+    try:
+        p = room.get_Parameter(BuiltInParameter.ROOM_NAME)
+        if p is not None and p.HasValue:
+            v = p.AsString()
+            if v:
+                return v
+    except Exception:
+        pass
+    return ""
+
+
+def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
+                   area_m2, host_type):
+    """Zet de 6 warmteverlies_ parameters op een DirectShape (best-effort).
+
+    Number-param met float, text-params met string. Ontbrekende param wordt
+    netjes overgeslagen (geen crash).
+
+    Args:
+        ds: DirectShape
+        ruimte: str bron-ruimte label
+        naar_ruimte: str buurruimte / BUITEN / GROND / ONVERWARMD:...
+        grenstype: str classificatie
+        orient_label: str dak/wand/vloer/opening
+        area_m2: float netto oppervlak in m2
+        host_type: str host Type-naam
+    """
+    if ds is None:
+        return
+
+    text_vals = (
+        ("warmteverlies_ruimte", ruimte),
+        ("warmteverlies_naar_ruimte", naar_ruimte),
+        ("warmteverlies_grenstype", grenstype),
+        ("warmteverlies_orientatie", orient_label),
+        ("warmteverlies_host_type", host_type),
+    )
+    for pname, pval in text_vals:
+        try:
+            p = ds.LookupParameter(pname)
+            if p is not None and not p.IsReadOnly:
+                p.Set(pval if pval is not None else "")
+        except Exception:
+            continue
+
+    try:
+        p = ds.LookupParameter("warmteverlies_oppervlak_m2")
+        if p is not None and not p.IsReadOnly:
+            p.Set(float(area_m2))
+    except Exception:
+        pass
+
+
+# =============================================================================
 # Hoofdrenderfunctie
 # =============================================================================
 def render_room_boundaries(doc, rooms, material_ids, params, output=None):
@@ -718,6 +1206,14 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
         "holes_cut": 0,
     }
 
+    # --- Shared parameters borgen (binnen ambient transactie van pushbutton) ---
+    ensure_warmteverlies_parameters(doc)
+
+    # --- Verwarmde-ruimte set (zelfde predicate als heated_only-filter) ---
+    heated_room_ids = set(
+        rd["element_id"] for rd in rooms if rd.get("is_heated")
+    )
+
     opt = SpatialElementBoundaryOptions()
 
     # Globale dedup van openingen over alle ruimten heen
@@ -738,6 +1234,10 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
             stats["rooms_skipped"] += 1
             continue
 
+        # Bron-ruimte label + element-id voor adjacency-parameters
+        room_eid = room_data.get("element_id")
+        room_label = "{0} {1}".format(room_number, name).strip()
+
         try:
             calc = SpatialElementGeometryCalculator(doc, opt)
             seg_result = calc.CalculateSpatialElementGeometry(room_element)
@@ -751,6 +1251,9 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
             continue
 
         center = _room_center(room_element)
+
+        # Fase van deze ruimte (vereist voor GetRoomAtPoint in de adjacency-probe)
+        room_phase = _room_phase(doc, room_element)
 
         # Wanden waarvoor we openingen moeten zoeken (niet-curtain hosts)
         host_wall_ids = set()
@@ -833,6 +1336,29 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         stats["bot"] += 1
                     elif orient == "vliesgevel":
                         stats["open"] += 1
+
+                    # --- Adjacency-parameters zetten (geometrische probe) ---
+                    grenstype, naar_ruimte = _resolve_adjacency(
+                        doc, room_element, room_eid, face, normal,
+                        _face_outer_loop(face), rooms, heated_room_ids,
+                        room_phase,
+                    )
+                    # Vloer op maaiveld -> GROND (zelfde drempel als
+                    # adjacent_detector: level_elevation_m < 0.5). Alleen als
+                    # de probe geen buurruimte vond (terugval exterior).
+                    if (orient == "bot" and grenstype == "exterior"
+                            and room_data.get("level_elevation_m", 0.0) < 0.5):
+                        grenstype = "ground"
+                        naar_ruimte = "GROND"
+                    _set_wv_params(
+                        ds,
+                        room_label,
+                        naar_ruimte,
+                        grenstype,
+                        ORIENT_LABEL.get(orient, orient),
+                        area_m2,
+                        _innermost_host_type_name(doc, hosts),
+                    )
             except Exception:
                 stats["faces_failed"] += 1
                 continue
@@ -884,6 +1410,13 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
 
                 comment = "{0} {1} wall".format(COMMENTS_PREFIX, room_number)
 
+                # Adjacency (geometrische probe) + host-type éénmaal per wandvlak
+                wall_grenstype, wall_naar = _resolve_adjacency(
+                    doc, room_element, room_eid, face, normal, outer_pts,
+                    rooms, heated_room_ids, room_phase,
+                )
+                wall_host_type = _innermost_host_type_name(doc, wall_host_ids)
+
                 # Horizontale FACE-richting + face s/z-ranges uit outer-loop
                 fdir = _face_direction(normal)
                 if outer_pts and fdir is not None:
@@ -934,6 +1467,11 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     if ds is not None:
                         stats["wall"] += 1
                         stats["netto_wall_m2"] += wd["area_m2"]
+                        _set_wv_params(
+                            ds, room_label, wall_naar, wall_grenstype,
+                            ORIENT_LABEL.get("wall", "wand"),
+                            wd["area_m2"], wall_host_type,
+                        )
                     continue
 
                 # Gat(en) succesvol gesneden
@@ -943,6 +1481,12 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 if netto < 0.0:
                     netto = 0.0
                 stats["netto_wall_m2"] += netto
+
+                _set_wv_params(
+                    ds, room_label, wall_naar, wall_grenstype,
+                    ORIENT_LABEL.get("wall", "wand"),
+                    netto, wall_host_type,
+                )
 
                 # Render gematchte openingen als blauwe rechthoek IN het gat
                 for ins_key, inner_corners, hole_area, rect in matched:
@@ -962,6 +1506,12 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     if ods is not None:
                         rendered_openings.add(ins_key)
                         stats["openings"] += 1
+                        # Opening grenst altijd aan buiten (deur/raam in wand)
+                        _set_wv_params(
+                            ods, room_label, "BUITEN", "exterior",
+                            ORIENT_LABEL.get("open", "opening"),
+                            hole_area, wall_host_type,
+                        )
             except Exception:
                 stats["faces_failed"] += 1
                 continue
@@ -988,6 +1538,16 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     if ods is not None:
                         rendered_openings.add(ins_key)
                         stats["openings"] += 1
+                        host_ids = []
+                        wid = rect.get("host_wall_id")
+                        if wid is not None:
+                            host_ids.append(wid)
+                        _set_wv_params(
+                            ods, room_label, "BUITEN", "exterior",
+                            ORIENT_LABEL.get("open", "opening"),
+                            rect.get("area_m2", 0.0),
+                            _innermost_host_type_name(doc, host_ids),
+                        )
                 except Exception:
                     continue
 
