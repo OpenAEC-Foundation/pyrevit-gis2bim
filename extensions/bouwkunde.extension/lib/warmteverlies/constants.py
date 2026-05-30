@@ -132,3 +132,18 @@ GROUND_MATERIAL_KEYWORDS = ["grond", "earth", "soil", "klei", "zand", "topo"]
 # Debug flags
 # =============================================================================
 DEBUG_OPENINGS = False            # Log opening detection per boundary wall
+DEBUG_SCANNER = False             # Schrijf _debug_scanner blok in scan result
+                                  # (per face/construction/separation attempt).
+                                  # Zet op False voor productie-export.
+
+# =============================================================================
+# Scan-configuratie
+# =============================================================================
+SCAN_LINKED_MODELS = True         # Raycast óók in gelinkte modellen zoeken
+                                  # (ReferenceIntersector.FindReferencesInRevitLinks).
+                                  # DEFAULT True voor cross-model laagopbouw (constructie
+                                  # in link, architectuur in host).
+                                  # Zet op False voor specifieke modellen waar de
+                                  # constructie zowel in host ALS link staat
+                                  # (bv 2786_Bouwkundige_model): anders raakt de ray
+                                  # elk pakket dubbel -> verdubbelde lagen.

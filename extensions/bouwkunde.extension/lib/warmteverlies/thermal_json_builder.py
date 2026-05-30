@@ -106,7 +106,7 @@ def build_thermal_import(project_name, rooms_data, scan_results):
 
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
-    return {
+    output = {
         "version": "1.0",
         "source": "revit-raycast",
         "exported_at": now,
@@ -116,6 +116,26 @@ def build_thermal_import(project_name, rooms_data, scan_results):
         "openings": openings,
         "open_connections": open_connections,
     }
+
+    # Debug-passthrough (raycast_scanner DEBUG_SCANNER flag). Wordt alleen
+    # geschreven als minimaal 1 scan een _debug_scanner-blok bevat.
+    debug_per_room = {}
+    for room_eid, room_scan in scan_results.items():
+        if not isinstance(room_scan, dict):
+            continue
+        rdbg = room_scan.get("_debug_scanner")
+        if rdbg:
+            debug_per_room[str(room_eid)] = rdbg
+    if debug_per_room:
+        output["_debug_scanner"] = {
+            "note": (
+                "Auto-debug uit raycast_scanner.DEBUG_SCANNER=True. "
+                "Schakel uit in constants.py voor productie."
+            ),
+            "rooms": debug_per_room,
+        }
+
+    return output
 
 
 def _build_room_id_map(rooms_data):

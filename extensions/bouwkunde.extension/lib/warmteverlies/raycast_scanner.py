@@ -37,6 +37,8 @@ from warmteverlies.constants import (
     WATER_MATERIAL_KEYWORDS,
     GROUND_MATERIAL_KEYWORDS,
     DEBUG_OPENINGS,
+    DEBUG_SCANNER,
+    SCAN_LINKED_MODELS,
 )
 from warmteverlies.unit_utils import internal_to_meters, internal_to_mm
 
@@ -66,6 +68,24 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
         "open_connections": [],
     }
 
+    # Debug payload (Issue 1/2/3 root-cause analyse). Aanlegfase: leeg
+    # dict, gevuld in onderliggende scan-helpers wanneer DEBUG_SCANNER
+    # aan staat. Wordt door thermal_json_builder doorgegeven aan de
+    # uiteindelijke JSON-output onder de key `_debug_scanner`.
+    if DEBUG_SCANNER:
+        debug = {
+            "room_a_id": room.Id.IntegerValue,
+            "room_a_name": _safe_room_name(room),
+            "phase_name": None,
+            "n_faces_total": 0,
+            "faces": [],
+            "constructions": [],
+            "separation_attempts": [],
+        }
+        result["_debug_scanner"] = debug
+    else:
+        debug = None
+
     try:
         intersector = _create_intersector(doc, view3d)
     except Exception:
@@ -77,6 +97,12 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
     # actieve phase bestaan. Fallbacks: room.CreatedPhaseId,
     # laatste phase in document, anders None.
     phase = _resolve_phase(doc, room, view3d)
+
+    if debug is not None and phase is not None:
+        try:
+            debug["phase_name"] = phase.Name
+        except Exception:
+            debug["phase_name"] = "<unknown>"
 
     # Room center in feet (Revit internal)
     try:
@@ -110,33 +136,361 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
     # boundary faces zonder overlap tussen rooms.
     seen_openings = set()
 
-    for face_info in faces:
+    if debug is not None:
+        debug["n_faces_total"] = len(faces)
+
+    for face_idx, face_info in enumerate(faces):
         normal = face_info["normal"]
         position_type = face_info["position_type"]
         area_m2 = face_info["area_m2"]
         z_min_m = face_info["z_min_m"]
         z_max_m = face_info["z_max_m"]
 
+        # Debug face-entry stub (emitted_as wordt later opgewerkt).
+        face_dbg = None
+        if debug is not None:
+            face_dbg = {
+                "face_idx": face_idx,
+                "position_type": position_type,
+                "area_m2": round(area_m2, 3),
+                "z_min_m": round(z_min_m, 3),
+                "z_max_m": round(z_max_m, 3),
+                "host_category_id": face_info.get("host_category_id"),
+                "host_category_name": _category_id_to_name(
+                    face_info.get("host_category_id")
+                ),
+                "host_element_id": face_info.get("host_element_id"),
+                "normal_xyz": _xyz_to_list(normal),
+                "emitted_as": "skipped",
+            }
+            debug["faces"].append(face_dbg)
+
+        if position_type == "open_connection":
+            # Fix #1: SEGC-face met Room Separation Line als host ->
+            # emit OpenConnection ipv wand-scan. Voorkomt dubbeltelling
+            # van de gevel erachter (oude raycast vond toch niks binnen
+            # RAY_MAX_DIST_M en gaf een vroege return).
+            emitted = _emit_open_connection_face(
+                doc, room, all_rooms, face_info, room_center_xy,
+                phase, result, debug,
+            )
+            if face_dbg is not None:
+                face_dbg["emitted_as"] = (
+                    "open_connection" if emitted else "open_connection_skipped"
+                )
+            continue
+
+        n_constr_before = len(result["constructions"])
+        n_open_before = len(result["openings"])
+
         if position_type == "wall":
             _scan_wall_face(
                 doc, intersector, room_center_xy, normal,
                 z_min_m, z_max_m, area_m2, room, all_rooms,
-                result, phase, seen_openings, view3d,
+                result, phase, seen_openings, view3d, debug,
             )
         elif position_type == "floor":
             _scan_horizontal_face(
                 doc, intersector, room_center_xy,
                 XYZ(0.0, 0.0, -1.0), z_min_m, area_m2,
-                "floor", room, all_rooms, result, phase,
+                "floor", room, all_rooms, result, phase, debug,
             )
         elif position_type == "ceiling":
             _scan_horizontal_face(
                 doc, intersector, room_center_xy,
                 XYZ(0.0, 0.0, 1.0), z_max_m, area_m2,
-                "ceiling", room, all_rooms, result, phase,
+                "ceiling", room, all_rooms, result, phase, debug,
             )
 
+        if face_dbg is not None:
+            dc = len(result["constructions"]) - n_constr_before
+            do = len(result["openings"]) - n_open_before
+            if dc > 0 and do > 0:
+                face_dbg["emitted_as"] = "construction+openings"
+            elif dc > 0:
+                face_dbg["emitted_as"] = "construction"
+            elif do > 0:
+                face_dbg["emitted_as"] = "openings_only"
+            face_dbg["n_constructions"] = dc
+            face_dbg["n_openings"] = do
+
     return result
+
+
+def _safe_room_name(room):
+    """Veilige uitlezing van Room.Name (geen exception bij gefaalde param)."""
+    try:
+        return room.Name or ""
+    except Exception:
+        return ""
+
+
+def _xyz_to_list(xyz):
+    """XYZ -> [x, y, z] floats, of None."""
+    if xyz is None:
+        return None
+    try:
+        return [round(xyz.X, 4), round(xyz.Y, 4), round(xyz.Z, 4)]
+    except Exception:
+        return None
+
+
+def _category_id_to_name(cat_id):
+    """Map een BuiltInCategory integer id naar een leesbare naam.
+
+    Best-effort: dekt de categorieen die we daadwerkelijk tegenkomen op
+    SEGC sub-faces (RoomSeparationLines, Walls, Floors, Ceilings, Roofs).
+    Onbekende ids -> "cat_<id>".
+    """
+    if cat_id is None or cat_id == 0:
+        return None
+    try:
+        mapping = {
+            int(BuiltInCategory.OST_RoomSeparationLines):
+                "RoomSeparationLines",
+            int(BuiltInCategory.OST_Walls): "Walls",
+            int(BuiltInCategory.OST_Floors): "Floors",
+            int(BuiltInCategory.OST_Ceilings): "Ceilings",
+            int(BuiltInCategory.OST_Roofs): "Roofs",
+            int(BuiltInCategory.OST_Doors): "Doors",
+            int(BuiltInCategory.OST_Windows): "Windows",
+            int(BuiltInCategory.OST_CurtainWallPanels): "CurtainWallPanels",
+            int(BuiltInCategory.OST_StructuralColumns): "StructuralColumns",
+            int(BuiltInCategory.OST_Columns): "Columns",
+        }
+        if cat_id in mapping:
+            return mapping[cat_id]
+    except Exception:
+        pass
+    return "cat_{0}".format(cat_id)
+
+
+def _emit_open_connection_face(doc, room, all_rooms, face_info,
+                               room_center_xy, phase, result, debug=None):
+    """Emit een OpenConnection record voor een separation-line face.
+
+    Bepaalt room_b geometrisch door meerdere 'probes' op het centroid
+    van de face, in beide richtingen langs de normaal en op room-mid-
+    height. Gebruikt doc.GetRoomAtPoint in de meegegeven phase.
+
+    Geen pseudo-room fallback: als de buurruimte niet bepaalbaar is
+    wordt de open verbinding geskipt (anders zou een gewone wand-
+    construction naar 'outside' ontstaan, dubbel met de echte gevel).
+
+    Args:
+        doc: Revit host Document
+        room: Huidige Revit Room
+        all_rooms: Lijst room data dicts
+        face_info: face-dict uit _get_faces_from_segc
+        room_center_xy: XYZ room center (Z=0)
+        phase: Revit Phase, of None
+        result: scan result dict
+        debug: optioneel debug-dict (krijgt separation-attempt entry)
+
+    Returns:
+        bool: True als open_connection geemitteerd, anders False.
+    """
+    area_m2 = face_info.get("area_m2", 0.0)
+    if area_m2 < 0.05:
+        if debug is not None:
+            debug["separation_attempts"].append({
+                "area_m2": round(area_m2, 4),
+                "decision": "skipped_too_small",
+            })
+        return False
+
+    adjacent_room_id = _find_room_across_separation_face(
+        doc, room, face_info, room_center_xy, phase, debug,
+    )
+    if adjacent_room_id is None:
+        # Geen buur bepaalbaar -> skip ipv pseudo-room (anders telt
+        # de gevel erachter dubbel).
+        return False
+
+    result["open_connections"].append({
+        "terminal_type": adjacent_room_id,
+        "area_m2": round(area_m2, 3),
+    })
+    return True
+
+
+def _find_room_across_separation_face(doc, current_room, face_info,
+                                      room_center_xy, phase, debug=None):
+    """Bepaal welke room aan de andere kant van een separation face ligt.
+
+    Strategie (Issue 2 fix): probeer meerdere probe-punten:
+    - 4 buffer-afstanden langs +normal en -normal (0.1, 0.3, 0.6, 1.2 m)
+    - elk punt op de face-centroid Z EN op room-mid-height Z (separation
+      lines hebben geen echte hoogte; GetRoomAtPoint op een leeg vlak
+      faalt soms terwijl een hoger punt wel een room geeft)
+    - skip altijd self-matches (current_room.Id)
+    - eerste niet-self room wint
+
+    Args:
+        doc: Revit host Document
+        current_room: Huidige Revit Room
+        face_info: face-dict (bevat 'sub_geom', 'normal')
+        room_center_xy: XYZ room center
+        phase: Revit Phase of None
+        debug: optioneel debug-dict (krijgt separation-attempt entry)
+
+    Returns:
+        int (room element_id) of None
+    """
+    attempt_log = None
+    if debug is not None:
+        attempt_log = {
+            "room_a_id": current_room.Id.IntegerValue,
+            "area_m2": round(face_info.get("area_m2", 0.0), 4),
+            "host_element_id": face_info.get("host_element_id"),
+            "centroid_xyz_ft": None,
+            "centroid_xyz_m": None,
+            "normal_xyz": _xyz_to_list(face_info.get("normal")),
+            "phase_available": phase is not None,
+            "tried_probes": [],
+            "decision": "none",
+            "room_found_id": None,
+        }
+        debug["separation_attempts"].append(attempt_log)
+
+    if phase is None:
+        if attempt_log is not None:
+            attempt_log["decision"] = "no_phase"
+        return None
+
+    normal = face_info.get("normal")
+    if normal is None:
+        if attempt_log is not None:
+            attempt_log["decision"] = "no_normal"
+        return None
+
+    sub_geom = face_info.get("sub_geom")
+    centroid_ft = _face_centroid_ft(sub_geom)
+    if centroid_ft is None:
+        # Fallback: gebruik room_center op de face-mid-Z
+        z_mid_m = (face_info.get("z_min_m", 0.0)
+                   + face_info.get("z_max_m", 0.0)) / 2.0
+        centroid_ft = XYZ(
+            room_center_xy.X,
+            room_center_xy.Y,
+            z_mid_m / FEET_TO_M,
+        )
+
+    if attempt_log is not None:
+        attempt_log["centroid_xyz_ft"] = _xyz_to_list(centroid_ft)
+        attempt_log["centroid_xyz_m"] = [
+            round(centroid_ft.X * FEET_TO_M, 3),
+            round(centroid_ft.Y * FEET_TO_M, 3),
+            round(centroid_ft.Z * FEET_TO_M, 3),
+        ]
+
+    # Probeer ook room-mid-height Z (separation lines liggen vaak op
+    # vloer-Z; een GetRoomAtPoint vlak boven de vloer geeft soms None).
+    try:
+        room_bb = current_room.get_BoundingBox(None)
+        room_z_mid_ft = (room_bb.Min.Z + room_bb.Max.Z) / 2.0
+    except Exception:
+        room_z_mid_ft = centroid_ft.Z
+
+    # Z-kandidaten (in feet): face-centroid + 1 ft, en room-midden.
+    z_candidates_ft = []
+    z_candidates_ft.append(centroid_ft.Z + (1.0 / FEET_TO_M))  # +1 m boven face
+    if abs(room_z_mid_ft - centroid_ft.Z) > 0.1:
+        z_candidates_ft.append(room_z_mid_ft)
+
+    # Buffer-afstanden in meters (klein -> groot).
+    buffer_distances_m = [0.1, 0.3, 0.6, 1.2]
+
+    current_id = current_room.Id.IntegerValue
+
+    for buf_m in buffer_distances_m:
+        buf_ft = buf_m / FEET_TO_M
+        # +normal en -normal proberen
+        for direction_sign in (1.0, -1.0):
+            nx = normal.X * direction_sign
+            ny = normal.Y * direction_sign
+            nz = normal.Z * direction_sign
+            for z_ft in z_candidates_ft:
+                try:
+                    probe = XYZ(
+                        centroid_ft.X + nx * buf_ft,
+                        centroid_ft.Y + ny * buf_ft,
+                        z_ft,
+                    )
+                except Exception:
+                    continue
+                try:
+                    found = doc.GetRoomAtPoint(probe, phase)
+                except Exception:
+                    found = None
+
+                found_id = None
+                if found is not None:
+                    try:
+                        found_id = found.Id.IntegerValue
+                    except Exception:
+                        found_id = None
+
+                if attempt_log is not None:
+                    attempt_log["tried_probes"].append({
+                        "buffer_m": buf_m,
+                        "sign": int(direction_sign),
+                        "z_ft": round(z_ft, 3),
+                        "z_m": round(z_ft * FEET_TO_M, 3),
+                        "room_found_id": found_id,
+                        "is_self": (found_id == current_id),
+                    })
+
+                if found_id is None:
+                    continue
+                if found_id == current_id:
+                    continue
+                # Hit op een echte buurroom -> klaar.
+                if attempt_log is not None:
+                    attempt_log["decision"] = "emitted"
+                    attempt_log["room_found_id"] = found_id
+                return found_id
+
+    # Geen niet-self buur gevonden -> skip.
+    if attempt_log is not None:
+        attempt_log["decision"] = "no_neighbour_found"
+    return None
+
+
+def _face_centroid_ft(face):
+    """Bepaal centroid van een Revit Face in interne (feet) coordinates.
+
+    Middel over de getrianguleerde vertices. Geeft None bij falen.
+
+    Args:
+        face: Revit Face object (mag None zijn)
+
+    Returns:
+        XYZ in feet of None
+    """
+    if face is None:
+        return None
+    try:
+        mesh = face.Triangulate()
+        if mesh is None or mesh.NumTriangles == 0:
+            return None
+        sx = 0.0
+        sy = 0.0
+        sz = 0.0
+        n = 0
+        for i in range(mesh.NumTriangles):
+            tri = mesh.get_Triangle(i)
+            for j in range(3):
+                v = tri.get_Vertex(j)
+                sx += v.X
+                sy += v.Y
+                sz += v.Z
+                n += 1
+        if n == 0:
+            return None
+        return XYZ(sx / n, sy / n, sz / n)
+    except Exception:
+        return None
 
 
 # =========================================================================
@@ -210,7 +564,7 @@ def _create_intersector(doc, view3d):
         ReferenceIntersector geconfigureerd voor linked models
     """
     intersector = ReferenceIntersector(view3d)
-    intersector.FindReferencesInRevitLinks = True
+    intersector.FindReferencesInRevitLinks = SCAN_LINKED_MODELS
     intersector.TargetType = FindReferenceTarget.Face
     return intersector
 
@@ -292,27 +646,149 @@ def _get_faces_from_segc(doc, room):
             })
             continue
 
-        for sub_face in sub_faces:
-            sub_geom = sub_face.GetSubface()
-            area_sqft = sub_geom.Area
-            area_m2 = area_sqft * FEET_TO_M * FEET_TO_M
-
-            if area_m2 < 0.05:
+        # Fix #3 (subface-dedup): meerdere subfaces kunnen naar hetzelfde
+        # SpatialBoundaryElement wijzen (bv. een Floor gesplitst in 2
+        # subfaces door SEGC). Zonder dedup wordt _scan_horizontal_face
+        # 2x gedraaid voor hetzelfde element -> 2x dezelfde construction.
+        # We groeperen subfaces per host-element-id en sommeren de area.
+        # Subfaces zonder bounding element -> aparte key per index (geen
+        # collapse risico).
+        subface_groups = {}  # key -> aggregated subface dict
+        order = []
+        for sf_idx, sub_face in enumerate(sub_faces):
+            try:
+                sub_geom = sub_face.GetSubface()
+            except Exception:
+                continue
+            if sub_geom is None:
                 continue
 
-            normal = _get_face_normal(sub_geom)
-            position_type = _classify_normal(normal)
-            z_min_m, z_max_m = _get_face_z_range(sub_geom)
+            try:
+                area_sqft = sub_geom.Area
+                sub_area_m2 = area_sqft * FEET_TO_M * FEET_TO_M
+            except Exception:
+                continue
+
+            if sub_area_m2 < 0.05:
+                continue
+
+            # Categorie van het host-element bepalen (separation line vs
+            # echte constructie). Faal-safe -> "wall" classificatie.
+            host_cat_id = 0
+            host_elem_id = None
+            try:
+                sbe = sub_face.SpatialBoundaryElement
+                if sbe is not None:
+                    h_id = sbe.HostElementId
+                    if (h_id is not None
+                            and h_id != ElementId.InvalidElementId):
+                        host_elem_id = h_id.IntegerValue
+                        # Host kan in linked doc zitten -> we hebben
+                        # enkel de categorie nodig, dus gebruik host doc
+                        # via _resolve_sbe_host (lichtgewicht inline).
+                        host_elem = _resolve_sbe_host_element(sbe, doc)
+                        if (host_elem is not None
+                                and host_elem.Category is not None):
+                            host_cat_id = host_elem.Category.Id.IntegerValue
+            except Exception:
+                pass
+
+            # Group key: host-element-id voor echte boundaries; sf_idx
+            # als fallback voor subfaces zonder bounding element zodat
+            # ze niet onbedoeld collapsen.
+            if host_elem_id is not None:
+                key = ("host", host_elem_id)
+            else:
+                key = ("idx", sf_idx)
+
+            if key not in subface_groups:
+                normal = _get_face_normal(sub_geom)
+                z_min_m, z_max_m = _get_face_z_range(sub_geom)
+                subface_groups[key] = {
+                    "normal": normal,
+                    "area_m2": sub_area_m2,
+                    "z_min_m": z_min_m,
+                    "z_max_m": z_max_m,
+                    "host_category_id": host_cat_id,
+                    "host_element_id": host_elem_id,
+                    "first_sub_geom": sub_geom,
+                }
+                order.append(key)
+            else:
+                grp = subface_groups[key]
+                grp["area_m2"] += sub_area_m2
+                # Z-range verbreden
+                z_min_m, z_max_m = _get_face_z_range(sub_geom)
+                if z_min_m < grp["z_min_m"]:
+                    grp["z_min_m"] = z_min_m
+                if z_max_m > grp["z_max_m"]:
+                    grp["z_max_m"] = z_max_m
+
+        for key in order:
+            grp = subface_groups[key]
+            normal = grp["normal"]
+            host_cat_id = grp["host_category_id"]
+
+            # Fix #1: Room Separation Lines -> open_connection face.
+            # OST_RoomSeparationLines BuiltInCategory id = -2000200.
+            # Deze faces NIET scannen als wand; de gevel erachter zou
+            # dubbeltellen. Worden later in scan_room_boundaries omgezet
+            # naar OpenConnection records.
+            if host_cat_id == int(BuiltInCategory.OST_RoomSeparationLines):
+                position_type = "open_connection"
+            else:
+                position_type = _classify_normal(normal)
 
             faces.append({
                 "normal": normal,
                 "position_type": position_type,
-                "area_m2": area_m2,
-                "z_min_m": z_min_m,
-                "z_max_m": z_max_m,
+                "area_m2": grp["area_m2"],
+                "z_min_m": grp["z_min_m"],
+                "z_max_m": grp["z_max_m"],
+                "host_category_id": host_cat_id,
+                "host_element_id": grp["host_element_id"],
+                "sub_geom": grp["first_sub_geom"],
             })
 
     return faces
+
+
+def _resolve_sbe_host_element(sbe, doc):
+    """Resolve het host-element uit een SpatialBoundaryElement.
+
+    Werkt voor host- en linked-elementen. Geeft None als niet vindbaar.
+    Gebruikt door _get_faces_from_segc om de host-categorie te bepalen
+    (oa voor separation-line detectie - Fix #1).
+
+    Args:
+        sbe: SpatialBoundaryElement
+        doc: Revit host Document
+
+    Returns:
+        Revit Element of None
+    """
+    try:
+        host_id = sbe.HostElementId
+        if host_id is None or host_id == ElementId.InvalidElementId:
+            return None
+
+        link_id = sbe.LinkInstanceId
+        if (link_id is not None
+                and link_id != ElementId.InvalidElementId):
+            link_instance = doc.GetElement(link_id)
+            if link_instance is None:
+                return None
+            try:
+                linked_doc = link_instance.GetLinkDocument()
+            except Exception:
+                linked_doc = None
+            if linked_doc is None:
+                return None
+            return linked_doc.GetElement(host_id)
+
+        return doc.GetElement(host_id)
+    except Exception:
+        return None
 
 
 def _get_faces_from_bbox(room, room_z_min_m, room_z_max_m):
@@ -466,7 +942,8 @@ def _classify_normal(normal):
 
 def _scan_wall_face(doc, intersector, room_center_xy, normal,
                     z_min_m, z_max_m, face_area_m2, room,
-                    all_rooms, result, phase, seen_openings, view3d):
+                    all_rooms, result, phase, seen_openings, view3d,
+                    debug=None):
     """Scan een verticale (wand) face op meerdere hoogtes.
 
     Cast rays per RAY_HEIGHT_STEP_M hoogte, groepeert in zones en
@@ -527,11 +1004,19 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
             z / FEET_TO_M,
         )
 
-        layers, terminal = _hits_to_layer_stack(
+        layers, terminal, stack_dbg = _hits_to_layer_stack(
             hits, doc, room, all_rooms, ray_origin, ray_direction,
-            phase,
+            phase, return_debug=(debug is not None),
         )
         stacks_by_height[z] = (layers, terminal)
+
+        if debug is not None and stack_dbg is not None:
+            stack_dbg["context"] = {
+                "position_type": "wall",
+                "direction": direction,
+                "z_m": round(z, 3),
+            }
+            debug["constructions"].append(stack_dbg)
 
         z += RAY_HEIGHT_STEP_M
 
@@ -632,7 +1117,7 @@ def _make_zone_fingerprint(layers):
 
 def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
                           z_m, area_m2, position_type, room,
-                          all_rooms, result, phase):
+                          all_rooms, result, phase, debug=None):
     """Scan een horizontaal vlak (vloer/plafond) met een enkele ray.
 
     Args:
@@ -663,8 +1148,9 @@ def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
         if not hits:
             return
 
-        layers, terminal = _hits_to_layer_stack(
+        layers, terminal, stack_dbg = _hits_to_layer_stack(
             hits, doc, room, all_rooms, origin, ray_dir, phase,
+            return_debug=(debug is not None),
         )
 
         if position_type == "floor":
@@ -682,6 +1168,15 @@ def _scan_horizontal_face(doc, intersector, room_center_xy, ray_dir,
             "terminal_type": terminal,
         }
         result["constructions"].append(construction)
+
+        if debug is not None and stack_dbg is not None:
+            stack_dbg["context"] = {
+                "position_type": position_type,
+                "direction": dir_str,
+                "z_m": round(z_m, 3),
+                "area_m2": round(area_m2, 3),
+            }
+            debug["constructions"].append(stack_dbg)
 
     except Exception:
         pass
@@ -933,7 +1428,7 @@ def _get_element_material_name(element, element_doc):
 # =========================================================================
 
 def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
-                         ray_direction, phase):
+                         ray_direction, phase, return_debug=False):
     """Converteer ray hits naar een layer stack met terminal detectie.
 
     Groepeert hits per element, berekent laagdiktes en detecteert
@@ -947,12 +1442,16 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
         ray_origin: XYZ waarvandaan de ray startte (Revit internal feet)
         ray_direction: XYZ eenheidsvector van de ray richting
         phase: Revit Phase voor GetRoomAtPoint, of None
+        return_debug: bool, voeg debug-payload toe (Issue 3 root-cause)
 
     Returns:
-        tuple: (layers_list, terminal_type_string)
+        tuple: (layers_list, terminal_type_string, debug_dict_or_None)
+            debug_dict bevat 'element_groups_summary' met per ElementId
+            de hit-count, enter/exit distances en materiaalnaam — om
+            constr-1 anomalie te onderzoeken.
     """
     if not hits:
-        return ([], "outside")
+        return ([], "outside", None)
 
     # Groepeer hits per element_id: bepaal enter/exit distance
     element_groups = {}
@@ -967,6 +1466,7 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
                 "enter": dist,
                 "exit": dist,
                 "hit": hit,
+                "hit_count": 1,
             }
             element_order.append(eid)
         else:
@@ -975,6 +1475,7 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
                 grp["enter"] = dist
             if dist > grp["exit"]:
                 grp["exit"] = dist
+            grp["hit_count"] = grp.get("hit_count", 1) + 1
 
     # Sorteer op enter distance
     element_order.sort(key=lambda eid: element_groups[eid]["enter"])
@@ -1038,7 +1539,98 @@ def _hits_to_layer_stack(hits, doc, room, all_rooms, ray_origin,
                 ray_origin, ray_direction, phase,
             )
 
-    return (layers, terminal)
+    # Fix #3 (vangnet): dedupliceer opeenvolgende identieke solid-lagen
+    # met dezelfde (material, thickness_mm). Aanleiding: leefruimte-
+    # export toonde 2x identieke 'hout_vuren_generiek 160mm' in dak +
+    # vloer + wand, ook bij faces zonder subface-verdubbeling. De echte
+    # root-cause (vermoedelijk: ReferenceIntersector geeft per element
+    # zowel een entry- als exit-face-Reference terug, of overlappende
+    # geometrie wordt dubbel ge-mapt) vergt verdere runtime-debug in
+    # Revit. Tot die tijd: vangnet dat opeenvolgende identieke lagen
+    # collapse. Twee fysiek identieke lagen na elkaar (legitiem geval)
+    # verliest hierdoor 1 laag - acceptabel zolang de root-cause niet
+    # is geisoleerd. Air gaps mogen wel dupliceren (verschillende
+    # spouwen kunnen identieke dikte hebben en moeten apart blijven).
+    layers_pre_dedup = layers
+    layers = _dedup_consecutive_identical_solid_layers(layers)
+
+    debug_payload = None
+    if return_debug:
+        groups_summary = []
+        for eid in element_order:
+            grp = element_groups[eid]
+            hit = grp["hit"]
+            groups_summary.append({
+                "element_id": eid,
+                "is_linked": hit.get("is_linked", False),
+                "material_name": hit.get("material_name", ""),
+                "category_id": hit.get("category_id"),
+                "category_name": hit.get("category_name", ""),
+                "hit_count": grp.get("hit_count", 1),
+                "enter_m": round(grp["enter"], 4),
+                "exit_m": round(grp["exit"], 4),
+                "delta_mm": int(round(
+                    (grp["exit"] - grp["enter"]) * 1000.0
+                )),
+            })
+        debug_payload = {
+            "n_hits_raw": len(hits),
+            "n_elements_grouped": len(element_order),
+            "element_groups_summary": groups_summary,
+            "n_layers_pre_dedup": len(layers_pre_dedup),
+            "n_layers_post_dedup": len(layers),
+            "terminal": terminal,
+            "layers_pre_dedup": [
+                {
+                    "type": l.get("type", "solid"),
+                    "material": l.get("material", ""),
+                    "thickness_mm": l.get("thickness_mm", 0),
+                }
+                for l in layers_pre_dedup
+            ],
+            "layers_post_dedup": [
+                {
+                    "type": l.get("type", "solid"),
+                    "material": l.get("material", ""),
+                    "thickness_mm": l.get("thickness_mm", 0),
+                }
+                for l in layers
+            ],
+        }
+
+    return (layers, terminal, debug_payload)
+
+
+def _dedup_consecutive_identical_solid_layers(layers):
+    """Vangnet: collapse opeenvolgende identieke solid-lagen.
+
+    Twee opeenvolgende lagen worden samengevoegd als beiden type=solid
+    (geen air_gap) zijn en zelfde material + thickness_mm hebben.
+    Lambda van de eerste laag wordt behouden.
+
+    Args:
+        layers: lijst layer dicts
+
+    Returns:
+        lijst layer dicts (mogelijk korter)
+    """
+    if not layers:
+        return layers
+    out = [layers[0]]
+    for layer in layers[1:]:
+        prev = out[-1]
+        if layer.get("type") == "air_gap" or prev.get("type") == "air_gap":
+            out.append(layer)
+            continue
+        same_mat = layer.get("material", "") == prev.get("material", "")
+        same_thick = (
+            layer.get("thickness_mm", 0) == prev.get("thickness_mm", 0)
+        )
+        if same_mat and same_thick:
+            # Skip duplicaat
+            continue
+        out.append(layer)
+    return out
 
 
 def _get_element_thickness_mm(element, element_doc):
