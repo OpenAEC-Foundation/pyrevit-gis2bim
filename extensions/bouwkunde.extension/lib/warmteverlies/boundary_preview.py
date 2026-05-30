@@ -37,9 +37,22 @@ from Autodesk.Revit.DB import (
     TessellatedShapeBuilderTarget,
     TessellatedShapeBuilderFallback,
     FilteredElementCollector,
+    View3D,
+    ViewFamilyType,
+    ViewFamily,
 )
 
 from warmteverlies.unit_utils import internal_to_sqm
+from warmteverlies.constants import (
+    RAY_MAX_DIST_M,
+    CONSTRUCTION_CATEGORIES,
+    IGNORE_CATEGORIES,
+    FEET_TO_M,
+)
+from warmteverlies.raycast_scanner import (
+    _create_intersector,
+    _resolve_hit_element,
+)
 
 # =============================================================================
 # Constanten
@@ -83,6 +96,14 @@ ADJ_PROBE_OFFSETS_M = (0.10, 0.20, 0.35, 0.50, 0.75, 1.0)
 # Inwaartse offset (meter) om de normaal-richting te ijken op de bron-ruimte.
 ADJ_INWARD_CHECK_M = 0.15
 
+# Type-stapel: marge (meter) bovenop de buurruimte-cutoff, zodat de verre
+# wandzijde-laag net wel meekomt (de probe vindt de buur iets achter de wand).
+TYPE_STACK_CUTOFF_MARGIN_M = 0.02
+
+# Type-stapel fallback (echte buitenlucht): max luchtspleet (meter) tussen twee
+# opeenvolgende constructie-hits; groter gat = einde wandpakket -> stoppen.
+TYPE_STACK_MAX_AIRGAP_M = 0.05
+
 # Ruimte-naam-patronen die buitenlucht voorstellen: een door de probe gevonden
 # ruimte met zo'n naam telt als exterior, niet als unheated_space.
 # (case-insensitive substring-match, whitespace gestript)
@@ -102,6 +123,7 @@ WV_PARAM_DEFS = (
     ("warmteverlies_orientatie", "text"),
     ("warmteverlies_oppervlak_m2", "number"),
     ("warmteverlies_host_type", "text"),
+    ("warmteverlies_type_stapel", "text"),
 )
 
 # orient (intern) -> NL label voor warmteverlies_orientatie
@@ -113,8 +135,17 @@ ORIENT_LABEL = {
     "open": "opening",
 }
 
+# Type-parameter (Yes/No) die een constructie-Type als afwerklaag markeert.
+# Type-binding op Walls/Floors/Roofs/Ceilings. Afwerklagen worden uit de
+# type-stapel (raycast) gefilterd.
+AFWERKLAAG_PARAM_NAME = "warmteverlies_afwerklaag"
+
+# Type Comments-substring waarop bootstrap een Type als afwerklaag markeert.
+AFWERKLAAG_COMMENT_PATTERN = "afwerk"
+
 # Module-flag: parameters al gebonden in deze sessie (idempotent fast-path)
 _wv_params_created = False
+_afwerklaag_param_created = False
 
 
 # =============================================================================
@@ -742,6 +773,10 @@ def _wv_create_param_options(name, type_key):
         from Autodesk.Revit.DB import SpecTypeId
         if type_key == "number":
             return ExternalDefinitionCreationOptions(name, SpecTypeId.Number)
+        if type_key == "yesno":
+            return ExternalDefinitionCreationOptions(
+                name, SpecTypeId.Boolean.YesNo
+            )
         return ExternalDefinitionCreationOptions(name, SpecTypeId.String.Text)
     except (ImportError, AttributeError):
         pass
@@ -749,6 +784,8 @@ def _wv_create_param_options(name, type_key):
     from Autodesk.Revit.DB import ParameterType as RevitPT
     if type_key == "number":
         return ExternalDefinitionCreationOptions(name, RevitPT.Number)
+    if type_key == "yesno":
+        return ExternalDefinitionCreationOptions(name, RevitPT.YesNo)
     return ExternalDefinitionCreationOptions(name, RevitPT.Text)
 
 
@@ -885,6 +922,174 @@ def ensure_warmteverlies_parameters(doc):
             pass
 
 
+def ensure_afwerklaag_parameter(doc):
+    """Zorg dat de Yes/No Type-parameter warmteverlies_afwerklaag bestaat.
+
+    Type-binding (NewTypeBinding) op Walls, Floors, Roofs, Ceilings — het is
+    een eigenschap van het constructie-Type, niet van de instance. Groep
+    "Berekeningen" in het shared-parameter-bestand, palette-groep Data.
+
+    Idempotent (BindingMap-check). MOET binnen een open Transaction draaien
+    (zelfde ambient transactie als ensure_warmteverlies_parameters).
+
+    Args:
+        doc: Revit Document
+
+    Returns:
+        bool: True bij succes
+    """
+    global _afwerklaag_param_created
+    if _afwerklaag_param_created:
+        return True
+
+    from Autodesk.Revit.DB import BuiltInCategory as _BIC
+
+    app = doc.Application
+
+    # Al gebonden?
+    binding_map = doc.ParameterBindings
+    it = binding_map.ForwardIterator()
+    while it.MoveNext():
+        try:
+            if it.Key.Name == AFWERKLAAG_PARAM_NAME:
+                _afwerklaag_param_created = True
+                return True
+        except Exception:
+            continue
+
+    original_spf = ""
+    try:
+        original_spf = app.SharedParametersFilename
+    except Exception:
+        pass
+
+    try:
+        temp_dir = os.environ.get(
+            "TEMP",
+            os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp"),
+        )
+        temp_path = os.path.join(temp_dir, "Warmteverlies_SharedParams.txt")
+        if not os.path.exists(temp_path):
+            f = open(temp_path, "w")
+            f.close()
+
+        app.SharedParametersFilename = temp_path
+        def_file = app.OpenSharedParameterFile()
+
+        group = None
+        for g in def_file.Groups:
+            if g.Name == SHARED_PARAM_GROUP:
+                group = g
+                break
+        if group is None:
+            group = def_file.Groups.Create(SHARED_PARAM_GROUP)
+
+        # Categorie-set: Walls, Floors, Roofs, Ceilings
+        cat_set = app.Create.NewCategorySet()
+        for bic in (_BIC.OST_Walls, _BIC.OST_Floors,
+                    _BIC.OST_Roofs, _BIC.OST_Ceilings):
+            try:
+                cat = doc.Settings.Categories.get_Item(bic)
+                if cat is not None:
+                    cat_set.Insert(cat)
+            except Exception:
+                continue
+
+        definition = None
+        for d in group.Definitions:
+            if d.Name == AFWERKLAAG_PARAM_NAME:
+                definition = d
+                break
+        if definition is None:
+            opts = _wv_create_param_options(AFWERKLAAG_PARAM_NAME, "yesno")
+            definition = group.Definitions.Create(opts)
+
+        # TYPE-binding (eigenschap van het constructie-Type)
+        binding = app.Create.NewTypeBinding(cat_set)
+        _wv_bind_parameter(doc, binding_map, definition, binding)
+
+        doc.Regenerate()
+        _afwerklaag_param_created = True
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            if original_spf:
+                app.SharedParametersFilename = original_spf
+        except Exception:
+            pass
+
+
+def bootstrap_afwerklaag_from_comments(doc):
+    """Markeer constructie-Types als afwerklaag o.b.v. Type Comments.
+
+    Voor elk Wall/Floor/Roof/Ceiling-TYPE waarvan Type Comments
+    (ALL_MODEL_TYPE_COMMENTS) de substring "afwerk" bevat (case-insensitive)
+    wordt warmteverlies_afwerklaag = 1 (Yes) gezet.
+
+    Alleen Yes zetten, NOOIT unsetten — handmatig aangevinkte Types blijven
+    behouden, de param wordt de filter-bron. Idempotent. MOET binnen een open
+    Transaction draaien.
+
+    Args:
+        doc: Revit Document
+
+    Returns:
+        int: aantal Types dat (nieuw) op Yes is gezet
+    """
+    from Autodesk.Revit.DB import (
+        BuiltInParameter, BuiltInCategory as _BIC, ElementType,
+        FilteredElementCollector as _FEC,
+    )
+
+    type_cats = (
+        _BIC.OST_Walls, _BIC.OST_Floors, _BIC.OST_Roofs, _BIC.OST_Ceilings,
+    )
+
+    count = 0
+    seen = set()
+    for bic in type_cats:
+        try:
+            collector = (
+                _FEC(doc)
+                .OfCategory(bic)
+                .WhereElementIsElementType()
+            )
+        except Exception:
+            continue
+
+        for et in collector:
+            try:
+                tid = et.Id.IntegerValue
+                if tid in seen:
+                    continue
+                seen.add(tid)
+
+                cp = et.get_Parameter(
+                    BuiltInParameter.ALL_MODEL_TYPE_COMMENTS
+                )
+                if cp is None or not cp.HasValue:
+                    continue
+                comment = cp.AsString()
+                if not comment:
+                    continue
+                if AFWERKLAAG_COMMENT_PATTERN not in comment.lower():
+                    continue
+
+                ap = et.LookupParameter(AFWERKLAAG_PARAM_NAME)
+                if ap is None or ap.IsReadOnly:
+                    continue
+                # Alleen Yes zetten als nog niet Yes (nooit unsetten)
+                if ap.AsInteger() != 1:
+                    ap.Set(1)
+                    count += 1
+            except Exception:
+                continue
+
+    return count
+
+
 # =============================================================================
 # Adjacency-bepaling per DirectShape
 # =============================================================================
@@ -1005,8 +1210,61 @@ def _room_at(doc, xyz, phase):
         return None
 
 
+def _outward_normal_at_face(doc, room_eid, face, normal, outer_pts, phase):
+    """Bepaal zwaartepunt + geborgde naar-buiten-normaal van een grensvlak.
+
+    De SEGC-normaal wijst doorgaans weg van het room-volume, maar dat wordt
+    geverifieerd: een punt iets NAAR BINNEN (tegen de normaal in) moet de
+    bron-ruimte opleveren. Zo niet, wordt de richting omgedraaid. Hergebruikt
+    door zowel de adjacency-probe als de type-stapel-raycast (DRY).
+
+    Args:
+        doc: Revit Document
+        room_eid: element-id (int) van de bron-ruimte
+        face: Revit Face
+        normal: XYZ SEGC face-normaal
+        outer_pts: list[XYZ] outer-loop (voor zwaartepunt)
+        phase: Phase-element van de bron-ruimte
+
+    Returns:
+        (centroid_XYZ, outward_normal_XYZ) of (None, None)
+    """
+    centroid = _face_centroid(face, outer_pts)
+    if centroid is None:
+        return (None, None)
+
+    outx, outy, outz = normal.X, normal.Y, normal.Z
+
+    # Richting borgen kan alleen met een fase (GetRoomAtPoint vereist die).
+    if phase is not None:
+        inward = ADJ_INWARD_CHECK_M * METER_TO_FEET
+        p_in = XYZ(
+            centroid.X - outx * inward,
+            centroid.Y - outy * inward,
+            centroid.Z - outz * inward,
+        )
+        room_in = _room_at(doc, p_in, phase)
+        inward_hits_source = (
+            room_in is not None and room_in.Id.IntegerValue == room_eid
+        )
+        if not inward_hits_source:
+            p_in2 = XYZ(
+                centroid.X + outx * inward,
+                centroid.Y + outy * inward,
+                centroid.Z + outz * inward,
+            )
+            room_in2 = _room_at(doc, p_in2, phase)
+            if (room_in2 is not None
+                    and room_in2.Id.IntegerValue == room_eid):
+                # Normaal wees naar binnen -> omdraaien (nu naar buiten)
+                outx, outy, outz = -outx, -outy, -outz
+
+    return (centroid, XYZ(outx, outy, outz))
+
+
 def _resolve_adjacency(doc, room_element, room_eid, face, normal, outer_pts,
-                       all_rooms, heated_room_ids, phase):
+                       all_rooms, heated_room_ids, phase, outward=None,
+                       centroid=None):
     """Bepaal grenstype + buurruimte-label via geometrische probe.
 
     Vanuit het zwaartepunt van het grensvlak wordt naar buiten gestapt langs
@@ -1024,41 +1282,26 @@ def _resolve_adjacency(doc, room_element, room_eid, face, normal, outer_pts,
         all_rooms: alle room-data dicts (voor heated-label fallback, niet vereist)
         heated_room_ids: set van verwarmde room element-ids
         phase: Phase-element van de bron-ruimte
+        outward: XYZ geborgde naar-buiten-normaal (optioneel; anders berekend)
+        centroid: XYZ face-zwaartepunt (optioneel; anders berekend)
 
     Returns:
-        (grenstype, naar_ruimte_label)
+        (grenstype, naar_ruimte_label, cutoff_m)
             grenstype in {exterior, adjacent_room, unheated_space}
             (ground wordt door de caller bepaald voor vloeren op maaiveld)
+            cutoff_m: offset (meter) waarop een ruimte != bron is gevonden
+                      (de verre wandzijde); None bij echte buitenlucht zonder
+                      gevonden buurruimte. Wordt door de type-stapel-raycast
+                      gebruikt om hits voorbij de wand af te kappen.
     """
-    centroid = _face_centroid(face, outer_pts)
-    if centroid is None or phase is None:
-        return ("exterior", "BUITEN")
-
-    # Normaal-richting borgen: een punt iets NAAR BINNEN (tegen de normaal in)
-    # moet de bron-ruimte opleveren. Zo niet -> normaal omdraaien.
-    inward = ADJ_INWARD_CHECK_M * METER_TO_FEET
-    outx, outy, outz = normal.X, normal.Y, normal.Z
-
-    p_in = XYZ(
-        centroid.X - outx * inward,
-        centroid.Y - outy * inward,
-        centroid.Z - outz * inward,
-    )
-    room_in = _room_at(doc, p_in, phase)
-    inward_hits_source = (
-        room_in is not None and room_in.Id.IntegerValue == room_eid
-    )
-    if not inward_hits_source:
-        # Probeer de andere kant: punt op +normaal moet bron-ruimte zijn
-        p_in2 = XYZ(
-            centroid.X + outx * inward,
-            centroid.Y + outy * inward,
-            centroid.Z + outz * inward,
+    if centroid is None or outward is None:
+        centroid, outward = _outward_normal_at_face(
+            doc, room_eid, face, normal, outer_pts, phase
         )
-        room_in2 = _room_at(doc, p_in2, phase)
-        if room_in2 is not None and room_in2.Id.IntegerValue == room_eid:
-            # Normaal wees naar binnen -> omdraaien zodat hij naar buiten wijst
-            outx, outy, outz = -outx, -outy, -outz
+    if centroid is None or outward is None or phase is None:
+        return ("exterior", "BUITEN", None)
+
+    outx, outy, outz = outward.X, outward.Y, outward.Z
 
     # Naar buiten stappen door de constructie-dikte heen
     for off_m in ADJ_PROBE_OFFSETS_M:
@@ -1079,21 +1322,22 @@ def _resolve_adjacency(doc, room_element, room_eid, face, normal, outer_pts,
         nbr_name = _get_room_name_safe(nbr)
 
         # Buitenlucht-ruimte (bv. "Buiten") telt als exterior, niet als
-        # unheated_space. Buitenlucht is het eindpunt van de probe.
+        # unheated_space. Buitenlucht is het eindpunt van de probe — maar de
+        # offset is wel een geldige cutoff (verre wandzijde).
         nbr_name_norm = nbr_name.strip().lower()
         if any(pat in nbr_name_norm for pat in OUTDOOR_ROOM_NAME_PATTERNS):
-            return ("exterior", "BUITEN")
+            return ("exterior", "BUITEN", off_m)
 
         adj_label = "{0} {1}".format(
             _get_room_number_safe(nbr),
             nbr_name,
         ).strip()
         if nbr_eid in heated_room_ids:
-            return ("adjacent_room", adj_label)
-        return ("unheated_space", "ONVERWARMD:" + adj_label)
+            return ("adjacent_room", adj_label, off_m)
+        return ("unheated_space", "ONVERWARMD:" + adj_label, off_m)
 
-    # Niets gevonden -> buiten
-    return ("exterior", "BUITEN")
+    # Niets gevonden -> echte buitenlucht, geen buurruimte-afstand beschikbaar
+    return ("exterior", "BUITEN", None)
 
 
 def _get_room_number_safe(room):
@@ -1124,9 +1368,274 @@ def _get_room_name_safe(room):
     return ""
 
 
+# =============================================================================
+# Type-stapel (raycast door de constructie heen)
+# =============================================================================
+def _element_type_name(element_doc, element):
+    """Type-naam van een element (host of linked), engine-robuust.
+
+    Gebruikt SYMBOL_NAME_PARAM (`.Name` faalt in de Revit-IronPython-engine),
+    met Element.Name.__get__ als fallback.
+
+    Args:
+        element_doc: Document waarin het element leeft (host of link)
+        element: Revit Element
+
+    Returns:
+        str: Type-naam of "" als onbekend
+    """
+    from Autodesk.Revit.DB import BuiltInParameter, Element
+    try:
+        type_id = element.GetTypeId()
+        if type_id is None or type_id.IntegerValue <= 0:
+            return ""
+        type_el = element_doc.GetElement(type_id)
+        if type_el is None:
+            return ""
+        try:
+            p = type_el.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+            if p is not None and p.HasValue:
+                v = p.AsString()
+                if v:
+                    return v
+        except Exception:
+            pass
+        try:
+            v = Element.Name.__get__(type_el)
+            if v:
+                return v
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return ""
+
+
+def _is_afwerklaag_type(element_doc, element):
+    """Is het Type van dit element gemarkeerd als afwerklaag (Yes/No)?
+
+    Leest warmteverlies_afwerklaag op het Type. Param afwezig (bv. in een
+    linked doc dat de param niet kent) of niet Yes -> False (= structureel,
+    wordt niet uit de stapel gefilterd).
+
+    Args:
+        element_doc: Document waarin het element leeft
+        element: Revit Element
+
+    Returns:
+        bool
+    """
+    try:
+        type_id = element.GetTypeId()
+        if type_id is None or type_id.IntegerValue <= 0:
+            return False
+        type_el = element_doc.GetElement(type_id)
+        if type_el is None:
+            return False
+        p = type_el.LookupParameter(AFWERKLAAG_PARAM_NAME)
+        if p is None:
+            return False
+        return p.AsInteger() == 1
+    except Exception:
+        return False
+
+
+def _type_stack_for_face(doc, intersector, centroid, outward, cutoff_m=None):
+    """Bepaal de geordende type-stapel die een straal naar buiten passeert.
+
+    Schiet een straal vanuit (iets binnen) het face-zwaartepunt langs de
+    naar-buiten-normaal en verzamelt de constructie-element-Types op afstand.
+
+    De ray levert per element TWEE faces (voor- + achtervlak), dus de
+    luchtspleet-detectie is ELEMENT-bewust: hits worden per element_id
+    gegroepeerd tot een span [near, far]. Een dik element (bv. 120mm PIR)
+    is één span, geen valse spleet. De luchtspleet wordt gemeten als
+    `volgend_element.near - huidig_element.far` (echte spouw tussen twee
+    elementen).
+
+    Afkapping (cruciaal — anders schiet de straal de buurruimte in):
+    - luchtspleet: break wanneer de inter-element-spleet > TYPE_STACK_MAX_AIRGAP_M
+      (verre wandzijde / eerste echte spouw of ruimte-overgang).
+    - `cutoff_m` (buurruimte-afstand): neem geen element mee waarvan `near`
+      voorbij cutoff_m (+ marge) ligt.
+
+    Afwerklaag-elementen worden volledig overgeslagen; de spleet wordt dan
+    gemeten tussen de overgebleven STRUCTURELE buur-elementen.
+
+    Daarna pas worden opeenvolgende duplicaten samengevoegd.
+
+    Args:
+        doc: Revit host Document
+        intersector: ReferenceIntersector (uit _create_intersector)
+        centroid: XYZ face-zwaartepunt
+        outward: XYZ geborgde naar-buiten-normaal (zelfde als de probe gebruikte)
+        cutoff_m: buurruimte-afstand (meter) of None
+
+    Returns:
+        str: "Type1 > Type2 > ..." of "" als geen constructie geraakt
+    """
+    if intersector is None or centroid is None or outward is None:
+        return ""
+
+    # Iets naar binnen starten zodat de eerste (binnenste) laag meekomt.
+    back = 0.05 * METER_TO_FEET
+    origin = XYZ(
+        centroid.X - outward.X * back,
+        centroid.Y - outward.Y * back,
+        centroid.Z - outward.Z * back,
+    )
+
+    try:
+        refs = intersector.Find(origin, outward)
+    except Exception:
+        return ""
+    if refs is None:
+        return ""
+
+    # Bovengrens: buurruimte-cutoff (+marge) of de globale RAY_MAX_DIST_M.
+    if cutoff_m is not None:
+        max_dist_m = cutoff_m + TYPE_STACK_CUTOFF_MARGIN_M
+    else:
+        max_dist_m = RAY_MAX_DIST_M
+
+    # --- Hits per element_id groeperen tot spans [near, far] ---
+    # element_id -> dict(near, far, tname, afwerk). De ray levert per element
+    # twee faces (voor/achter); door op element_id te groeperen wordt een dik
+    # element één span i.p.v. twee hits die een valse luchtspleet vormen.
+    elem_spans = {}
+    for rwc in refs:
+        try:
+            prox_m = rwc.Proximity * FEET_TO_M
+            if prox_m > max_dist_m:
+                continue
+            hit = _resolve_hit_element(rwc.GetReference(), doc)
+            if hit is None:
+                continue
+            cat_id = hit.get("category_id")
+            # Eigen WV_BND Generic Models + meubels etc. wegfilteren
+            if cat_id in IGNORE_CATEGORIES:
+                continue
+            # Alleen echte constructie (Wall/Floor/Roof/Ceiling); filtert
+            # openingen automatisch weg (niet in CONSTRUCTION_CATEGORIES).
+            if cat_id not in CONSTRUCTION_CATEGORIES:
+                continue
+
+            eid = hit.get("element_id")
+            if eid is None:
+                continue
+
+            existing = elem_spans.get(eid)
+            if existing is not None:
+                # Span uitbreiden (tweede face van hetzelfde element)
+                if prox_m < existing["near"]:
+                    existing["near"] = prox_m
+                if prox_m > existing["far"]:
+                    existing["far"] = prox_m
+                continue
+
+            afwerk = _is_afwerklaag_type(
+                hit.get("element_doc"), hit.get("element")
+            )
+            tname = _element_type_name(
+                hit.get("element_doc"), hit.get("element")
+            )
+            elem_spans[eid] = {
+                "near": prox_m,
+                "far": prox_m,
+                "tname": tname,
+                "afwerk": afwerk,
+            }
+        except Exception:
+            continue
+
+    if not elem_spans:
+        return ""
+
+    # Elementen op near-afstand sorteren
+    elements = sorted(elem_spans.values(), key=lambda e: e["near"])
+
+    cutoff_bound = None
+    if cutoff_m is not None:
+        cutoff_bound = cutoff_m + TYPE_STACK_CUTOFF_MARGIN_M
+
+    # --- Truncatie op element-niveau ---
+    # Luchtspleet = volgend_element.near - huidig_element.far (alleen tussen
+    # STRUCTURELE elementen gemeten; afwerklaag-elementen worden overgeslagen
+    # zonder de spleet kunstmatig te vergroten).
+    # Cutoff = element meenemen zolang near <= cutoff_bound.
+    ordered = []
+    prev_far = None
+    for el in elements:
+        # Bovengrens buurruimte-cutoff (op begin van het element)
+        if cutoff_bound is not None and el["near"] > cutoff_bound:
+            break
+
+        # Afwerklaag: element overslaan; prev_far NIET bijwerken, zodat de
+        # spleet straks tussen de structurele buren wordt gemeten.
+        if el["afwerk"]:
+            continue
+
+        # Luchtspleet t.o.v. de vorige STRUCTURELE laag
+        if prev_far is not None:
+            gap = el["near"] - prev_far
+            if gap > TYPE_STACK_MAX_AIRGAP_M:
+                break
+
+        tname = el["tname"]
+        if tname:
+            # Opeenvolgende duplicaten samenvoegen
+            if not ordered or ordered[-1] != tname:
+                ordered.append(tname)
+
+        prev_far = el["far"]
+
+    return " > ".join(ordered)
+
+
+def _first_3d_view_family_type_id(doc):
+    """Vind het eerste ViewFamilyType voor 3D-views (voor de temp-view).
+
+    Returns:
+        ElementId of None
+    """
+    try:
+        for vft in FilteredElementCollector(doc).OfClass(ViewFamilyType):
+            try:
+                if vft.ViewFamily == ViewFamily.ThreeDimensional:
+                    return vft.Id
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _create_temp_3d_view(doc):
+    """Maak een tijdelijke schone isometrische 3D-view (zonder section box).
+
+    Cruciaal: ReferenceIntersector geeft 0 hits in een view met actieve
+    section box -> we maken een verse view zonder box.
+
+    Returns:
+        View3D of None
+    """
+    vft_id = _first_3d_view_family_type_id(doc)
+    if vft_id is None:
+        return None
+    try:
+        v3d = View3D.CreateIsometric(doc, vft_id)
+        try:
+            v3d.IsSectionBoxActive = False
+        except Exception:
+            pass
+        return v3d
+    except Exception:
+        return None
+
+
 def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
-                   area_m2, host_type):
-    """Zet de 6 warmteverlies_ parameters op een DirectShape (best-effort).
+                   area_m2, host_type, type_stapel=""):
+    """Zet de 7 warmteverlies_ parameters op een DirectShape (best-effort).
 
     Number-param met float, text-params met string. Ontbrekende param wordt
     netjes overgeslagen (geen crash).
@@ -1138,7 +1647,8 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         grenstype: str classificatie
         orient_label: str dak/wand/vloer/opening
         area_m2: float netto oppervlak in m2
-        host_type: str host Type-naam
+        host_type: str host Type-naam (innerste)
+        type_stapel: str geordende type-stapel ("T1 > T2 > ...")
     """
     if ds is None:
         return
@@ -1149,6 +1659,7 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         ("warmteverlies_grenstype", grenstype),
         ("warmteverlies_orientatie", orient_label),
         ("warmteverlies_host_type", host_type),
+        ("warmteverlies_type_stapel", type_stapel),
     )
     for pname, pval in text_vals:
         try:
@@ -1204,15 +1715,29 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
         "faces_failed": 0,
         "netto_wall_m2": 0.0,
         "holes_cut": 0,
+        "type_stack_failed": 0,
     }
 
     # --- Shared parameters borgen (binnen ambient transactie van pushbutton) ---
     ensure_warmteverlies_parameters(doc)
+    # Yes/No Type-param + bootstrap afwerklagen uit Type Comments
+    ensure_afwerklaag_parameter(doc)
+    bootstrap_afwerklaag_from_comments(doc)
 
     # --- Verwarmde-ruimte set (zelfde predicate als heated_only-filter) ---
     heated_room_ids = set(
         rd["element_id"] for rd in rooms if rd.get("is_heated")
     )
+
+    # --- Temp 3D-view + intersector voor type-stapel-raycast (één keer) ---
+    # Schone view zonder section box: ReferenceIntersector geeft anders 0 hits.
+    temp_view = _create_temp_3d_view(doc)
+    intersector = None
+    if temp_view is not None:
+        try:
+            intersector = _create_intersector(doc, temp_view)
+        except Exception:
+            intersector = None
 
     opt = SpatialElementBoundaryOptions()
 
@@ -1337,11 +1862,18 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     elif orient == "vliesgevel":
                         stats["open"] += 1
 
+                    # --- Zwaartepunt + naar-buiten-normaal éénmaal bepalen
+                    # (gedeeld door adjacency-probe en type-stapel-raycast) ---
+                    f_outer = _face_outer_loop(face)
+                    f_centroid, f_outward = _outward_normal_at_face(
+                        doc, room_eid, face, normal, f_outer, room_phase
+                    )
+
                     # --- Adjacency-parameters zetten (geometrische probe) ---
-                    grenstype, naar_ruimte = _resolve_adjacency(
+                    grenstype, naar_ruimte, cutoff_m = _resolve_adjacency(
                         doc, room_element, room_eid, face, normal,
-                        _face_outer_loop(face), rooms, heated_room_ids,
-                        room_phase,
+                        f_outer, rooms, heated_room_ids, room_phase,
+                        outward=f_outward, centroid=f_centroid,
                     )
                     # Vloer op maaiveld -> GROND (zelfde drempel als
                     # adjacent_detector: level_elevation_m < 0.5). Alleen als
@@ -1350,6 +1882,16 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             and room_data.get("level_elevation_m", 0.0) < 0.5):
                         grenstype = "ground"
                         naar_ruimte = "GROND"
+
+                    # --- Type-stapel via raycast (afgekapt op buur-cutoff) ---
+                    type_stapel = ""
+                    try:
+                        type_stapel = _type_stack_for_face(
+                            doc, intersector, f_centroid, f_outward, cutoff_m
+                        )
+                    except Exception:
+                        stats["type_stack_failed"] += 1
+
                     _set_wv_params(
                         ds,
                         room_label,
@@ -1358,6 +1900,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         ORIENT_LABEL.get(orient, orient),
                         area_m2,
                         _innermost_host_type_name(doc, hosts),
+                        type_stapel,
                     )
             except Exception:
                 stats["faces_failed"] += 1
@@ -1410,12 +1953,27 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
 
                 comment = "{0} {1} wall".format(COMMENTS_PREFIX, room_number)
 
+                # Zwaartepunt + naar-buiten-normaal éénmaal (adjacency + stapel)
+                w_centroid, w_outward = _outward_normal_at_face(
+                    doc, room_eid, face, normal, outer_pts, room_phase
+                )
+
                 # Adjacency (geometrische probe) + host-type éénmaal per wandvlak
-                wall_grenstype, wall_naar = _resolve_adjacency(
+                wall_grenstype, wall_naar, wall_cutoff_m = _resolve_adjacency(
                     doc, room_element, room_eid, face, normal, outer_pts,
                     rooms, heated_room_ids, room_phase,
+                    outward=w_outward, centroid=w_centroid,
                 )
                 wall_host_type = _innermost_host_type_name(doc, wall_host_ids)
+
+                # Type-stapel via raycast (afgekapt op buur-cutoff, 1x per wand)
+                wall_type_stapel = ""
+                try:
+                    wall_type_stapel = _type_stack_for_face(
+                        doc, intersector, w_centroid, w_outward, wall_cutoff_m
+                    )
+                except Exception:
+                    stats["type_stack_failed"] += 1
 
                 # Horizontale FACE-richting + face s/z-ranges uit outer-loop
                 fdir = _face_direction(normal)
@@ -1470,7 +2028,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         _set_wv_params(
                             ds, room_label, wall_naar, wall_grenstype,
                             ORIENT_LABEL.get("wall", "wand"),
-                            wd["area_m2"], wall_host_type,
+                            wd["area_m2"], wall_host_type, wall_type_stapel,
                         )
                     continue
 
@@ -1485,7 +2043,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 _set_wv_params(
                     ds, room_label, wall_naar, wall_grenstype,
                     ORIENT_LABEL.get("wall", "wand"),
-                    netto, wall_host_type,
+                    netto, wall_host_type, wall_type_stapel,
                 )
 
                 # Render gematchte openingen als blauwe rechthoek IN het gat
@@ -1562,6 +2120,13 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 )
             except Exception:
                 pass
+
+    # --- Temp 3D-view opruimen (geen "3D View N"-rommel in het project) ---
+    if temp_view is not None:
+        try:
+            doc.Delete(temp_view.Id)
+        except Exception:
+            pass
 
     return stats
 
