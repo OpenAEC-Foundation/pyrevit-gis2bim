@@ -1,0 +1,8 @@
+title: Grensvlak Check
+tooltip: >-
+  Render de SEGC-grensvlakken per ruimte als gekleurde DirectShapes
+  (dak=rood, wand=geel, vloer=groen, openingen=blauw) in een 3D
+  controleview, ter visuele check voor de warmteverlies-export
+author: 3BM Bouwkunde
+highlight: new
+context: zero-doc

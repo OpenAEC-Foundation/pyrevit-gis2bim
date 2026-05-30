@@ -36,11 +36,15 @@
 
 > Nieuw feature-idee (sessie 30-05, geprototyped via Revit MCP op `2786_Bouwkundige_model`). Doel: de gebruiker krijgt vóór JSON-export een **visuele controle** van wat de exporter "ziet" — gekleurde SEGC-grensvlakken per ruimte, direct in een 3D-view.
 
-- [ ] **`WarmteverliesPreview.pushbutton`** naast de bestaande Export-knop (`Bouwbesluit.panel`) — rendert per ruimte de SEGC-grensvlakken als gekleurde DirectShapes (Generic Models, Comments-prefix `WV_BND`).
-  - Kleur per oriëntatie: **rood** = dak/plafond (n.Z > 0,7), **geel** = wand, **blauw** = vloer (n.Z < −0,7).
+> **GEÏMPLEMENTEERD 30-05** (commit volgt): `WarmteverliesGrensvlakCheck.pushbutton` + `WarmteverliesGrensvlakWis.pushbutton` + `lib/warmteverlies/boundary_preview.py`. Kern live gevalideerd via Revit MCP op `2786_Bouwkundige_model` (21 ruimten, 0 failures, vliesgevel/deuren/ramen/vloer-counts matchen het prototype). **Nog te testen: de pushbutton-UI (forms-prompts) in Revit zelf.** De 4 parameters zijn geïmplementeerd (min vlakgrootte, openingen tonen, host-loze slivers verbergen, alleen verwarmde ruimten).
+
+- [x] ~~`WarmteverliesGrensvlakCheck.pushbutton`~~ naast de bestaande Export-knop (`Bouwbesluit.panel`) — rendert per ruimte de SEGC-grensvlakken als gekleurde DirectShapes (Generic Models, Comments-prefix `WV_BND`).
+  - Kleur: **rood** = dak/plafond (n.Z > 0,7), **geel** = wand, **groen** = vloer (n.Z < −0,7), **blauw** = openingen (vliesgevel via eigen schuine SEGC-face + deuren/ramen als rechthoek).
   - **Host-loze wand-slivers verbergen** (`GetBoundaryFaceInfo Count == 0` + verticaal) — spiegelt de exporter-skip (commit `39c6768`); horizontale host-loze vlakken wél tonen (raycast vindt pakket).
-  - [ ] **Openingen detecteren en apart kleuren** (deuren/ramen/vliesgevels) — via `Wall.FindInserts` op de host-wand (hergebruik Bug F-logica, commit `055d57e`) + curtain panels. Aparte kleur zodat de gebruiker ziet of openingen correct herkend worden.
-  - [ ] **Clear-knop** of toggle: verwijder alle DirectShapes met Comments-prefix `WV_BND`.
+  - [x] ~~**Openingen detecteren en apart kleuren**~~ — deuren/ramen via `Wall.FindInserts` (extent-rechthoek), vliesgevels via het SEGC-grensvlak met host = curtain wall (volgt de schuine kap, blijft binnen de ruimtecontour). Beide blauw.
+  - [x] ~~**Clear-knop**~~ — aparte `WarmteverliesGrensvlakWis.pushbutton` verwijdert alle DirectShapes met Comments-prefix `WV_BND`.
+  - [ ] **Pushbutton-UI testen in Revit** (forms-prompts: multiselect-opties + min-vlakgrootte-invoer) — alleen de lib-kern is via MCP getest.
+  - [ ] **Iconen** voor de twee pushbuttons (nu pyRevit default-icoon).
 - **Ontwerpregel (KRITISCH):** preview en export MOETEN dezelfde face-extractie/-filter/-groepering delen (`_get_faces_from_segc` + #3-host-groepering). Aparte implementatie = divergentie = onbetrouwbare check.
 - **Volgorde:** eerst #3 (host-element-groepering) + #5 (vliesgevel → `curtain_wall`) perfectioneren, dán de preview bovenop die gedeelde code — dan toont de preview meteen de gegroepeerde, schone constructies.
 - **Blauwdruk:** de MCP-prototype-code uit sessie 30-05 (oriëntatie-classificatie + `TessellatedShapeBuilder` per face + 3 materials `WV_BND_TOP/WALL/BOT` + host-loos-skip). Zie `docs/2026-05-29-warmteverlies-exporter-bevindingen.md`.
