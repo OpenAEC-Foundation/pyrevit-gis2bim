@@ -191,7 +191,13 @@ def _build_rooms(rooms_data, scan_results, room_id_map):
 
         area_m2 = round(room_data.get("floor_area_m2", 0.0), 2)
         height_m = round(room_data.get("height_m", 2.6), 2)
-        volume_m3 = round(area_m2 * height_m, 2)
+        volume_m3 = round(room_data.get("volume_m3", 0.0), 2)
+        if volume_m3 <= 0:
+            # Revit-volumeberekening staat uit -> fallback op area x nominale hoogte
+            volume_m3 = round(area_m2 * height_m, 2)
+        else:
+            # effectieve hoogte uit het echte volume (klopt met de kap/schuine daken)
+            height_m = round(volume_m3 / area_m2, 2) if area_m2 > 0 else height_m
 
         room = {
             "id": schema_id,

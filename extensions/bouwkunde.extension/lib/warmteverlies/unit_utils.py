@@ -5,7 +5,7 @@ Revit 2022-2023 gebruiken DisplayUnitType (deprecated).
 Revit 2024-2025 gebruiken ForgeTypeId.
 Intern werkt Revit altijd in feet (lengte) en square feet (oppervlak).
 """
-from warmteverlies.constants import FEET_TO_M, SQFT_TO_M2
+from warmteverlies.constants import FEET_TO_M, SQFT_TO_M2, CUFT_TO_M3
 
 from Autodesk.Revit.DB import UnitUtils
 
@@ -39,6 +39,16 @@ def internal_to_sqm(value_sqft):
             ForgeTypeId("autodesk.unit.unit:squareMeters-1.0.1"),
         )
     return value_sqft * SQFT_TO_M2
+
+
+def internal_to_cubicm(value_cubicft):
+    """Converteer Revit internal units (cubic feet) naar kubieke meters."""
+    if HAS_FORGE_UNITS:
+        return UnitUtils.ConvertFromInternalUnits(
+            value_cubicft,
+            ForgeTypeId("autodesk.unit.unit:cubicMeters-1.0.1"),
+        )
+    return value_cubicft * CUFT_TO_M3
 
 
 def internal_to_mm(value_feet):

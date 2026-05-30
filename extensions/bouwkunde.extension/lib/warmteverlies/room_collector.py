@@ -12,6 +12,7 @@ from Autodesk.Revit.DB import (
 
 from warmteverlies.unit_utils import (
     internal_to_sqm,
+    internal_to_cubicm,
     internal_to_meters,
     get_room_height,
     get_param_value,
@@ -54,6 +55,7 @@ def collect_rooms(doc):
             "level_name": level_name,
             "level_elevation_m": level_elev,
             "floor_area_m2": internal_to_sqm(room.Area),
+            "volume_m3": internal_to_cubicm(room.Volume),
             "height_m": get_room_height(room),
             "is_heated": True,
             "function": None,
