@@ -1,0 +1,182 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Wat doet de Grensvlak-check?"
+    Width="640"
+    Height="700"
+    WindowStartupLocation="CenterOwner"
+    ResizeMode="CanResizeWithGrip"
+    Background="White">
+
+    <Window.Resources>
+        <!-- 3BM Huisstijl -->
+        <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
+        <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>
+        <SolidColorBrush x:Key="MagentaBrush" Color="#A01C48"/>
+        <SolidColorBrush x:Key="PeachBrush" Color="#DB4C40"/>
+        <SolidColorBrush x:Key="LightGrayBrush" Color="#F5F5F5"/>
+        <SolidColorBrush x:Key="MediumGrayBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#323232"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#808080"/>
+
+        <!-- Sectiekop (violet) -->
+        <Style x:Key="SectionHead" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource VioletBrush}"/>
+            <Setter Property="Margin" Value="0,18,0,6"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <!-- Body-tekst -->
+        <Style x:Key="Body" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="19"/>
+        </Style>
+
+        <!-- Opsommingsregel -->
+        <Style x:Key="Bullet" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Margin" Value="14,0,0,3"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="19"/>
+        </Style>
+
+        <!-- Sluiten-knop -->
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource TealBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3DA396"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#359384"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top" Background="{StaticResource VioletBrush}">
+            <TextBlock Text="Wat doet de Grensvlak-check?"
+                       FontSize="18" FontWeight="SemiBold"
+                       Foreground="White"
+                       Margin="24,16,24,4"/>
+            <TextBlock Text="Visuele controle van de warmteverlies-invoer vóór de export"
+                       FontSize="12" FontWeight="Medium"
+                       Foreground="{StaticResource TealBrush}"
+                       TextWrapping="Wrap"
+                       Margin="24,0,24,16"/>
+        </StackPanel>
+
+        <!-- Accent Line -->
+        <Rectangle DockPanel.Dock="Top" Height="3" Fill="{StaticResource TealBrush}"/>
+
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{StaticResource MediumGrayBrush}"
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource LightGrayBrush}"
+                Padding="24,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btn_help_close" Content="Sluiten"
+                        Style="{StaticResource PrimaryButton}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Inhoud (scrollbaar) -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Padding="24,8,24,16">
+            <StackPanel>
+
+                <TextBlock Style="{StaticResource SectionHead}" Margin="0,8,0,6"
+                           Text="Wat doet deze tool?"/>
+                <TextBlock Style="{StaticResource Body}"
+                           Text="Toont vóór de warmteverlies-export visueel wat de exporter geometrisch &quot;ziet&quot;: per ruimte worden de grensvlakken (uit SpatialElementGeometryCalculator) als gekleurde 3D-vlakken (DirectShapes) in een eigen 3D-view getekend, elk met meetbare parameters. Zo controleer je de invoer vóór de JSON-export."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Kleurcodering"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Rood = dak / plafond"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Geel = wand"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Groen = vloer"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Blauw = openingen (deuren / ramen / vliesgevels)"/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Parameters per vlak (groep &quot;Berekeningen&quot;, prefix warmteverlies_)"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• ruimte — de bronruimte"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• naar_ruimte — wat aan de andere kant zit: buurruimte / BUITEN / GROND / ONVERWARMD:&lt;naam&gt;"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• grenstype — exterior / adjacent_room / unheated_space / ground"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• orientatie — dak / wand / vloer / opening"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• oppervlak_m2 — netto vlakoppervlak (m²)"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• host_type — het innerste constructie-element-type"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• type_stapel — de volledige laagopbouw, binnen→buiten (bv. structuur > isolatie > gevel)"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• warmteverlies_afwerklaag (Yes/No, op het Type) — markeer afwerklaag-types zodat ze uit de stapel vallen"/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Hoe wordt de buurruimte bepaald? (geometrisch)"/>
+                <TextBlock Style="{StaticResource Body}"
+                           Text="Vanuit het midden van elk vlak wordt langs de naar-buiten-normaal geprikt met GetRoomAtPoint; de eerste geraakte ruimte is de echte buur. De tool kijkt dus vanuit de ruimte naar buiten — niet via gedeelde wand-elementen (die geven bij een wand met meerdere aangrenzende ruimten een verkeerde uitkomst). Werkt voor alle richtingen: wand → buurruimte, vloer → ruimte eronder, plafond → ruimte erboven. GetRoomAtPoint gebruikt automatisch de juiste room-phase (anders geeft het niets terug)."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Hoe wordt de laagopbouw (type-stapel) bepaald?"/>
+                <TextBlock Style="{StaticResource Body}"
+                           Text="Het model is opgebouwd uit losse, gestapelde elementen (afwerking + structuur + isolatie + gevel, elk een eigen wand/vloer). Een straal schiet vanuit de ruimte door die stapel en verzamelt de geraakte element-types op volgorde. De stapel stopt bij de verre wandzijde — de eerste luchtspleet of de buurruimte-afstand — zodat hij niet doorschiet naar de volgende ruimte. De spleet wordt per element gemeten (voor- én achtervlak van één dik element tellen niet als spleet), zodat dikke isolatielagen de opbouw niet breken."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Afwerklagen negeren"/>
+                <TextBlock Style="{StaticResource Body}"
+                           Text="Types met warmteverlies_afwerklaag = Ja worden uit de type-stapel gefilterd, zodat alleen de thermisch relevante kern (structuur + isolatie) overblijft. Deze markering wordt automatisch gevuld vanuit de Type Comments waar &quot;afwerk&quot; in staat; je kunt hem per Type ook handmatig aan/uit zetten."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Modelvereisten voor een betrouwbaar resultaat"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Ruimten moeten met hun Upper Offset tot het echte dak reiken."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Afwerk-/afschotvloeren op niet-room-bounding zetten; de dragende constructievloer wél room-bounding."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Ruimten die buitenlucht voorstellen met &quot;buiten&quot; in de naam → worden als exterior behandeld."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="De opties in dit venster"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Min. vlakgrootte (m²): vlakken kleiner dan deze waarde worden overgeslagen."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Openingen tonen: deuren/ramen/vliesgevels apart in blauw."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Host-loze slivers verbergen: kleine vlakjes zonder constructie-element (koof-randen) verbergen."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Alleen verwarmde ruimten: onverwarmde ruimten overslaan."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Acties"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Tonen: wist oude controle-shapes, rendert opnieuw en opent de 3D-view &quot;WV - Grensvlak-check&quot;."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Wissen: verwijdert alle WV_BND-controle-shapes uit het model."/>
+
+                <TextBlock Style="{StaticResource SectionHead}"
+                           Text="Beperkingen / volgende stap"/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• De tool toont de opbouw per vlak. Het samenvouwen tot enkele echte constructies (canonieke volgorde + merge van deel-vangsten) gebeurt later in de exporter."/>
+                <TextBlock Style="{StaticResource Bullet}" Text="• Vliesgevels/glas hebben geen laagopbouw (geen CompoundStructure) en blijven leeg."/>
+
+            </StackPanel>
+        </ScrollViewer>
+
+    </DockPanel>
+</Window>

@@ -6,6 +6,9 @@ ziet (uit SpatialElementGeometryCalculator) als gekleurde DirectShapes
 (Generic Models) in een dedicated 3D view. Dit is een visuele controle vooraf,
 voordat de JSON-export wordt gedraaid.
 
+Eén knop met huisstijl-dialog: 'Tonen' rendert (wist eerst oude shapes),
+'Wissen' verwijdert de WV_BND controle-shapes.
+
 Kleurcode:
 - dak/plafond = rood, wand = geel, vloer = groen, openingen/vlies = blauw
 
@@ -16,7 +19,8 @@ __title__ = "Grensvlak\nCheck"
 __author__ = "3BM Bouwkunde"
 __doc__ = (
     "Render de SEGC-grensvlakken per ruimte als gekleurde DirectShapes "
-    "ter visuele controle voor de warmteverlies-export"
+    "ter visuele controle voor de warmteverlies-export. De dialog biedt "
+    "ook een 'Wissen'-knop om de WV_BND controle-shapes te verwijderen."
 )
 
 import os
@@ -34,6 +38,7 @@ from Autodesk.Revit.DB import (
     ElementId,
     BuiltInCategory,
     FilteredElementCollector,
+    DirectShape,
 )
 
 # Lib pad toevoegen
@@ -41,24 +46,46 @@ sys.path.append(os.path.join(
     os.path.dirname(__file__), "..", "..", "..", "lib"
 ))
 
+from wpf_template import WPFWindow
+
 from warmteverlies.room_collector import collect_rooms
 from warmteverlies.room_function_mapper import map_all_rooms
 from warmteverlies.boundary_preview import (
     ensure_materials,
     render_room_boundaries,
+    clear_boundary_shapes,
 )
 
 # =============================================================================
 # Constanten
 # =============================================================================
 VIEW_NAME = "WV - Grensvlak-check"
-
-# Parameter-labels voor de multiselect
-OPT_SHOW_OPENINGS = "Openingen tonen (deuren/ramen/vliesgevels)"
-OPT_HIDE_SLIVERS = "Host-loze slivers verbergen"
-OPT_HEATED_ONLY = "Alleen verwarmde ruimten"
-
+COMMENTS_PREFIX = "WV_BND"
 DEFAULT_MIN_FACE_AREA_M2 = 0.10
+
+
+# =============================================================================
+# Helpers — model-inspectie (read-only)
+# =============================================================================
+def _count_existing_shapes(doc):
+    """Tel het aantal WV_BND DirectShapes in het model (read-only)."""
+    count = 0
+    collector = (
+        FilteredElementCollector(doc)
+        .OfClass(DirectShape)
+        .WhereElementIsNotElementType()
+    )
+    for ds in collector:
+        try:
+            param = ds.LookupParameter("Comments")
+            if param is None or not param.HasValue:
+                continue
+            value = param.AsString()
+            if value and value.startswith(COMMENTS_PREFIX):
+                count += 1
+        except Exception:
+            continue
+    return count
 
 
 # =============================================================================
@@ -112,50 +139,6 @@ def _ensure_generic_models_visible(doc, view):
 
 
 # =============================================================================
-# Parameters verzamelen
-# =============================================================================
-def _gather_parameters():
-    """Verzamel de 4 instelbare parameters via pyRevit forms.
-
-    Returns:
-        dict of None (bij annuleren)
-    """
-    # Stap 1: booleaanse opties via multiselect (default alle drie aan)
-    options = [OPT_SHOW_OPENINGS, OPT_HIDE_SLIVERS, OPT_HEATED_ONLY]
-    selected = forms.SelectFromList.show(
-        options,
-        title="Grensvlak-check opties",
-        multiselect=True,
-        button_name="Volgende",
-    )
-    if selected is None:
-        return None
-
-    selected = list(selected)
-
-    # Stap 2: minimum vlakgrootte
-    min_area_str = forms.ask_for_string(
-        default=str(DEFAULT_MIN_FACE_AREA_M2),
-        prompt="Minimum vlakgrootte (m2) — kleinere vlakken overslaan:",
-        title="Grensvlak-check opties",
-    )
-    if min_area_str is None:
-        return None
-
-    try:
-        min_area = float(min_area_str.replace(",", "."))
-    except Exception:
-        min_area = DEFAULT_MIN_FACE_AREA_M2
-
-    return {
-        "min_face_area_m2": min_area,
-        "show_openings": OPT_SHOW_OPENINGS in selected,
-        "hide_hostless_slivers": OPT_HIDE_SLIVERS in selected,
-        "heated_only": OPT_HEATED_ONLY in selected,
-    }
-
-
-# =============================================================================
 # Rapportage
 # =============================================================================
 def _print_summary(output, stats, params):
@@ -197,17 +180,212 @@ def _print_summary(output, stats, params):
 
 
 # =============================================================================
-# Hoofdfunctie
+# WPF Help-venster
 # =============================================================================
-def run_grensvlak_check(doc):
-    """Render de SEGC-grensvlakken als gekleurde DirectShapes."""
+class HelpWindow(WPFWindow):
+    """Huisstijl-uitleg-venster (puur UI, geen Revit-transacties).
+
+    Laadt help.xaml via hetzelfde Window-root-transfer-patroon als de
+    hoofddialog en toont scrollbare uitleg met een Sluiten-knop.
+    """
+
+    def __init__(self):
+        super(HelpWindow, self).__init__(
+            xaml_file=None,
+            title="Wat doet de Grensvlak-check?",
+            width=640,
+            height=700,
+        )
+        self._load_layout()
+        if getattr(self, "btn_help_close", None) is not None:
+            self.btn_help_close.Click += self._on_close
+
+    def _load_layout(self):
+        """Laad help.xaml en bind de named elementen."""
+        from System.IO import StringReader
+        from System.Xml import XmlReader as SysXmlReader
+        from System.Windows.Markup import XamlReader
+
+        xaml_path = os.path.join(os.path.dirname(__file__), "help.xaml")
+        with open(xaml_path, "r") as f:
+            xaml_content = f.read()
+
+        loaded = XamlReader.Load(SysXmlReader.Create(StringReader(xaml_content)))
+
+        self.Title = loaded.Title
+        self.Width = loaded.Width
+        self.Height = loaded.Height
+        self.WindowStartupLocation = loaded.WindowStartupLocation
+        self.ResizeMode = loaded.ResizeMode
+        self.Background = loaded.Background
+        self.Content = loaded.Content
+
+        for name in ("btn_help_close",):
+            element = loaded.FindName(name)
+            if element is not None:
+                setattr(self, name, element)
+
+    def _on_close(self, sender, args):
+        self.Close()
+
+
+# =============================================================================
+# WPF Dialog
+# =============================================================================
+class GrensvlakCheckWindow(WPFWindow):
+    """Huisstijl-dialog voor de Grensvlak-check.
+
+    Zet bij klik self.action ('tonen' / 'wissen' / None) + self.params en
+    sluit. Er gebeurt GEEN Revit-transactie in een event-handler; het
+    aanroepende script leest de actie na show_dialog() en voert die uit.
+    """
+
+    def __init__(self, doc):
+        # Base init zonder xaml_file: we laden de XAML zelf (de root is een
+        # <Window>, die transfereren we naar dit window — net als de
+        # bewezen SharedParamAudit-aanpak). De base laadt wel de huisstijl.
+        super(GrensvlakCheckWindow, self).__init__(
+            xaml_file=None,
+            title="Warmteverlies - Grensvlak-check",
+            width=480,
+            height=430,
+        )
+
+        self.doc = doc
+        self.action = None
+        self.params = None
+
+        self._load_layout()
+        self._populate_existing_count()
+        self._bind_events()
+
+    # -----------------------------------------------------------------
+    # XAML laden (Window-root → transfer, zelfde patroon als SharedParamAudit)
+    # -----------------------------------------------------------------
+    def _load_layout(self):
+        """Laad de UI.xaml layout en bind de named elementen."""
+        from System.IO import StringReader
+        from System.Xml import XmlReader as SysXmlReader
+        from System.Windows.Markup import XamlReader
+
+        xaml_path = os.path.join(os.path.dirname(__file__), "UI.xaml")
+        with open(xaml_path, "r") as f:
+            xaml_content = f.read()
+
+        loaded = XamlReader.Load(SysXmlReader.Create(StringReader(xaml_content)))
+
+        # Window-eigenschappen + content overnemen
+        self.Title = loaded.Title
+        self.Width = loaded.Width
+        self.Height = loaded.Height
+        self.WindowStartupLocation = loaded.WindowStartupLocation
+        self.ResizeMode = loaded.ResizeMode
+        self.Background = loaded.Background
+        self.Content = loaded.Content
+
+        element_names = [
+            "txt_min_area",
+            "chk_openings",
+            "chk_slivers",
+            "chk_heated",
+            "txt_existing_count",
+            "btn_show",
+            "btn_clear",
+            "btn_cancel",
+            "btn_help",
+        ]
+        for name in element_names:
+            element = loaded.FindName(name)
+            if element is not None:
+                setattr(self, name, element)
+
+    def _populate_existing_count(self):
+        """Toon het huidige aantal WV_BND shapes in het model."""
+        try:
+            count = _count_existing_shapes(self.doc)
+        except Exception:
+            count = None
+
+        if count is None:
+            self.txt_existing_count.Text = (
+                "Huidig in model: onbekend aantal WV_BND controle-shapes"
+            )
+        elif count == 0:
+            self.txt_existing_count.Text = (
+                "Huidig in model: geen WV_BND controle-shapes"
+            )
+        else:
+            self.txt_existing_count.Text = (
+                "Huidig in model: {0} WV_BND controle-shapes".format(count)
+            )
+
+    def _bind_events(self):
+        """Koppel knop-events."""
+        self.btn_show.Click += self._on_show
+        self.btn_clear.Click += self._on_clear
+        self.btn_cancel.Click += self._on_cancel
+        if getattr(self, "btn_help", None) is not None:
+            self.btn_help.Click += self._on_help
+
+    # -----------------------------------------------------------------
+    # Help-venster (genest modaal, puur UI — geen Revit-transactie)
+    # -----------------------------------------------------------------
+    def _on_help(self, sender, args):
+        """Open het help/uitleg-venster bovenop deze dialog."""
+        try:
+            help_window = HelpWindow()
+            help_window.Owner = self
+            help_window.ShowDialog()
+        except Exception as ex:
+            self.show_error(
+                "Kon het uitleg-venster niet openen:\n{0}".format(str(ex)),
+                title="Fout",
+            )
+
+    # -----------------------------------------------------------------
+    # Parameters lezen
+    # -----------------------------------------------------------------
+    def _read_params(self):
+        """Lees de inputs uit de dialog naar een params-dict."""
+        raw = self.txt_min_area.Text if self.txt_min_area.Text else ""
+        try:
+            min_area = float(raw.replace(",", ".").strip())
+        except Exception:
+            min_area = DEFAULT_MIN_FACE_AREA_M2
+
+        return {
+            "min_face_area_m2": min_area,
+            "show_openings": bool(self.chk_openings.IsChecked),
+            "hide_hostless_slivers": bool(self.chk_slivers.IsChecked),
+            "heated_only": bool(self.chk_heated.IsChecked),
+        }
+
+    # -----------------------------------------------------------------
+    # Event-handlers — GEEN transactie hier, alleen actie vastleggen + sluiten
+    # -----------------------------------------------------------------
+    def _on_show(self, sender, args):
+        self.action = "tonen"
+        self.params = self._read_params()
+        self.close_ok()
+
+    def _on_clear(self, sender, args):
+        self.action = "wissen"
+        self.params = None
+        self.close_ok()
+
+    def _on_cancel(self, sender, args):
+        self.action = None
+        self.params = None
+        self.close_cancel()
+
+
+# =============================================================================
+# Acties (buiten de WPF-event-handlers, met transacties)
+# =============================================================================
+def _do_render(doc, params):
+    """Voer de render-flow uit: wis oude shapes, render, maak/activeer view."""
     output = script.get_output()
     output.print_md("## Warmteverlies — Grensvlak-check")
-
-    # --- Parameters ---
-    params = _gather_parameters()
-    if params is None:
-        return
 
     # --- Rooms ophalen ---
     output.print_md("**Stap 1:** Rooms verzamelen...")
@@ -223,12 +401,17 @@ def run_grensvlak_check(doc):
     rooms = map_all_rooms(rooms)
     output.print_md("Gevonden: **{0}** rooms".format(len(rooms)))
 
-    # --- Render in transactie ---
+    # --- Render in transactie (eerst oude shapes wissen) ---
     output.print_md("**Stap 2:** Grensvlakken renderen...")
     stats = None
     t = Transaction(doc, "WV - Grensvlak-check renderen")
     t.Start()
     try:
+        removed = clear_boundary_shapes(doc)
+        if removed:
+            output.print_md(
+                "Oude controle-shapes verwijderd: **{0}**".format(removed)
+            )
         material_ids = ensure_materials(doc)
         stats = render_room_boundaries(
             doc, rooms, material_ids, params, output=output
@@ -275,8 +458,49 @@ def run_grensvlak_check(doc):
     # --- Samenvatting ---
     _print_summary(output, stats, params)
     output.print_md(
-        "Gebruik **Grensvlak Wis** om de WV_BND DirectShapes te verwijderen."
+        "Heropen deze knop en kies **Wissen** om de WV_BND controle-shapes "
+        "te verwijderen."
     )
+
+
+def _do_clear(doc):
+    """Verwijder alle WV_BND grensvlak-DirectShapes."""
+    output = script.get_output()
+    output.print_md("## Warmteverlies — Grensvlak wissen")
+
+    count = 0
+    t = Transaction(doc, "WV - Grensvlak-check wissen")
+    t.Start()
+    try:
+        count = clear_boundary_shapes(doc)
+        t.Commit()
+    except Exception as ex:
+        if t.HasStarted() and not t.HasEnded():
+            t.RollBack()
+        forms.alert(
+            "Fout bij verwijderen grensvlakken:\n{0}".format(str(ex)),
+            title="Fout",
+        )
+        return
+
+    output.print_md(
+        "Verwijderd: **{0}** WV_BND controle-shapes.".format(count)
+    )
+
+
+# =============================================================================
+# Hoofdfunctie
+# =============================================================================
+def run_grensvlak_check(doc):
+    """Open de huisstijl-dialog en voer de gekozen actie uit."""
+    window = GrensvlakCheckWindow(doc)
+    window.show_dialog()
+
+    if window.action == "tonen":
+        _do_render(doc, window.params)
+    elif window.action == "wissen":
+        _do_clear(doc)
+    # None / Annuleren -> niets doen
 
 
 # =============================================================================

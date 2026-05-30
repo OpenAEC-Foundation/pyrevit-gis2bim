@@ -1,0 +1,245 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Warmteverlies — Grensvlak-check"
+    Width="480"
+    Height="430"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="NoResize"
+    Background="White">
+
+    <Window.Resources>
+        <!-- 3BM Huisstijl -->
+        <SolidColorBrush x:Key="VioletBrush" Color="#350E35"/>
+        <SolidColorBrush x:Key="TealBrush" Color="#45B6A8"/>
+        <SolidColorBrush x:Key="YellowBrush" Color="#EFBD75"/>
+        <SolidColorBrush x:Key="MagentaBrush" Color="#A01C48"/>
+        <SolidColorBrush x:Key="PeachBrush" Color="#DB4C40"/>
+        <SolidColorBrush x:Key="LightGrayBrush" Color="#F5F5F5"/>
+        <SolidColorBrush x:Key="MediumGrayBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#323232"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#808080"/>
+
+        <!-- Primaire knop (teal) -->
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource TealBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3DA396"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#359384"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Secundaire knop (outline violet) -->
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource VioletBrush}"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="BorderBrush" Value="{StaticResource MediumGrayBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{StaticResource LightGrayBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Wis-knop (peach) -->
+        <Style x:Key="DangerButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource PeachBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#C94438"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- TextBox -->
+        <Style x:Key="StandardTextBox" TargetType="TextBox">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderBrush" Value="{StaticResource MediumGrayBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="White"/>
+        </Style>
+
+        <!-- CheckBox -->
+        <Style x:Key="StandardCheckBox" TargetType="CheckBox">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <!-- Help-knop (rond '?') -->
+        <Style x:Key="HelpButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource TealBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="Uitleg — wat doet de Grensvlak-check?"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="14">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3DA396"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- Header -->
+        <Grid DockPanel.Dock="Top" Background="{StaticResource VioletBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Warmteverlies — Grensvlak-check"
+                           FontSize="18" FontWeight="SemiBold"
+                           Foreground="White"
+                           Margin="20,16,20,4"/>
+                <TextBlock Text="Render de SEGC-grensvlakken per ruimte als gekleurde controle-shapes"
+                           FontSize="12" FontWeight="Medium"
+                           Foreground="{StaticResource TealBrush}"
+                           TextWrapping="Wrap"
+                           Margin="20,0,20,16"/>
+            </StackPanel>
+            <Button x:Name="btn_help" Grid.Column="1"
+                    Content="?"
+                    Style="{StaticResource HelpButton}"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,20,0"/>
+        </Grid>
+
+        <!-- Accent Line -->
+        <Rectangle DockPanel.Dock="Top" Height="3" Fill="{StaticResource TealBrush}"/>
+
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{StaticResource MediumGrayBrush}"
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource LightGrayBrush}"
+                Padding="20,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btn_clear" Content="Wissen"
+                        Style="{StaticResource DangerButton}"
+                        Margin="0,0,8,0"/>
+                <Button x:Name="btn_cancel" Content="Annuleren"
+                        Style="{StaticResource SecondaryButton}"
+                        Margin="0,0,8,0"/>
+                <Button x:Name="btn_show" Content="Tonen"
+                        Style="{StaticResource PrimaryButton}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Body -->
+        <StackPanel Margin="20,18,20,18">
+
+            <TextBlock Text="Minimum vlakgrootte (m²)"
+                       Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="txt_min_area"
+                     Style="{StaticResource StandardTextBox}"
+                     Text="0.10"
+                     Margin="0,0,0,16"/>
+
+            <CheckBox x:Name="chk_openings"
+                      Style="{StaticResource StandardCheckBox}"
+                      Content="Openingen tonen (deuren/ramen/vliesgevels)"
+                      IsChecked="True"/>
+
+            <CheckBox x:Name="chk_slivers"
+                      Style="{StaticResource StandardCheckBox}"
+                      Content="Host-loze slivers verbergen"
+                      IsChecked="True"/>
+
+            <CheckBox x:Name="chk_heated"
+                      Style="{StaticResource StandardCheckBox}"
+                      Content="Alleen verwarmde ruimten"
+                      IsChecked="True"/>
+
+            <Border Background="{StaticResource LightGrayBrush}"
+                    CornerRadius="4" Padding="12,8" Margin="0,8,0,0">
+                <TextBlock x:Name="txt_existing_count"
+                           Text="Huidig in model: — WV_BND controle-shapes"
+                           FontSize="12"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+        </StackPanel>
+
+    </DockPanel>
+</Window>
