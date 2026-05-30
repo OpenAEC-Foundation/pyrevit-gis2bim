@@ -185,6 +185,8 @@ def _print_summary(output, stats, params):
             ["Dak / plafond (rood)", stats["top"]],
             ["Vloer (groen)", stats["bot"]],
             ["Wand (geel)", stats["wall"]],
+            ["Netto wandoppervlak (m2)", round(stats["netto_wall_m2"], 2)],
+            ["Gaten gesneden (openingen uit wand)", stats["holes_cut"]],
             ["Vliesgevel (blauw)", stats["open"]],
             ["Openingen deur/raam (blauw)", stats["openings"]],
             ["Host-loze slivers verborgen", stats["slivers_hidden"]],

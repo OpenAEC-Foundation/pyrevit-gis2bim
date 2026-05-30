@@ -15,7 +15,7 @@ Alle DirectShapes krijgen Comments-prefix "WV_BND" voor cleanup.
 
 IronPython 2.7 — geen f-strings, geen type hints.
 """
-from System.Collections.Generic import List
+from System.Collections.Generic import List, IList
 
 from Autodesk.Revit.DB import (
     SpatialElementBoundaryOptions,
@@ -58,6 +58,16 @@ HORIZ_NORMAL_Z = 0.7
 # Opening-offset langs wand-normaal richting ruimtecentrum (mm -> feet)
 OPENING_OFFSET_MM = 20.0
 MM_TO_FEET = 1.0 / 304.8
+
+# Offset van de blauwe opening-rechthoek IN het gat (tegen z-fighting)
+HOLE_OPENING_OFFSET_MM = 15.0
+
+# Clamp-marge (ft, intern) waarmee het gat NAAR BINNEN wordt geknepen,
+# zodat een gat altijd binnen de outer-loop van het wandvlak valt.
+HOLE_CLAMP_MARGIN_FT = 0.01
+
+# Square-feet -> square-meters (face.Area is intern in ft^2)
+SQFT_TO_M2 = 0.092903
 
 OPENING_CATEGORIES = ("Doors", "Windows")
 
@@ -235,6 +245,199 @@ def _face_to_triangles(face):
 
 
 # =============================================================================
+# Multi-loop face (wand met gat)
+# =============================================================================
+def _face_outer_loop(face):
+    """Haal de buitencontour-punten van een face op.
+
+    Args:
+        face: Revit Face
+
+    Returns:
+        list[XYZ] of [] bij faal
+    """
+    pts = []
+    try:
+        loops = face.GetEdgesAsCurveLoops()
+    except Exception:
+        return pts
+    if loops is None or loops.Count == 0:
+        return pts
+    # Eerste loop = buitencontour
+    outer = loops[0]
+    for curve in outer:
+        try:
+            pts.append(curve.GetEndPoint(0))
+        except Exception:
+            continue
+    return pts
+
+
+def _project_on_plane(p, origin, normal):
+    """Projecteer punt p loodrecht op het vlak (origin, normal).
+
+    p_proj = p - n * dot(p - o, n)
+    """
+    vx = p.X - origin.X
+    vy = p.Y - origin.Y
+    vz = p.Z - origin.Z
+    d = vx * normal.X + vy * normal.Y + vz * normal.Z
+    return XYZ(
+        p.X - normal.X * d,
+        p.Y - normal.Y * d,
+        p.Z - normal.Z * d,
+    )
+
+
+def _build_directshape_face_with_holes(
+    doc, outer_pts, holes_corners, material_id, normal, comment
+):
+    """Bouw een DirectShape: één face met gaten via multi-loop TessellatedFace.
+
+    Args:
+        doc: Revit Document
+        outer_pts: list[XYZ] buitencontour
+        holes_corners: list van list[XYZ] (per gat 4 hoeken, al geprojecteerd)
+        material_id: ElementId van het wand-materiaal
+        normal: XYZ face-normal (voor winding-bepaling)
+        comment: string voor Comments-parameter
+
+    Returns:
+        DirectShape of None (None => caller moet fallback renderen)
+    """
+    if not outer_pts or len(outer_pts) < 3:
+        return None
+
+    builder = TessellatedShapeBuilder()
+    builder.OpenConnectedFaceSet(False)
+
+    loops = List[IList[XYZ]]()
+
+    outer = List[XYZ]()
+    for p in outer_pts:
+        outer.Add(p)
+    loops.Add(outer)
+
+    # Gaten met tegengestelde winding t.o.v. de buitencontour
+    for corners in holes_corners:
+        if len(corners) < 3:
+            continue
+        inner = List[XYZ]()
+        # Omgekeerde volgorde => tegengestelde winding (gat)
+        for p in reversed(corners):
+            inner.Add(p)
+        loops.Add(inner)
+
+    try:
+        builder.AddFace(TessellatedFace(loops, material_id))
+    except Exception:
+        return None
+
+    builder.CloseConnectedFaceSet()
+    builder.Target = TessellatedShapeBuilderTarget.AnyGeometry
+    builder.Fallback = TessellatedShapeBuilderFallback.Mesh
+    try:
+        builder.Build()
+        geom = builder.GetBuildResult().GetGeometricalObjects()
+    except Exception:
+        return None
+    if geom.Count == 0:
+        return None
+
+    ds = DirectShape.CreateElement(
+        doc, ElementId(BuiltInCategory.OST_GenericModel)
+    )
+    ds.SetShape(geom)
+    try:
+        comment_param = ds.LookupParameter("Comments")
+        if comment_param is not None:
+            comment_param.Set(comment)
+    except Exception:
+        pass
+    return ds
+
+
+def _face_direction(normal):
+    """Bepaal de horizontale richting (langs het wandvlak) uit de face-normal.
+
+    dir = normalize(-n.Y, n.X) — loodrecht op de normaal, in het horizontale vlak.
+
+    Args:
+        normal: XYZ face-normal
+
+    Returns:
+        (dirx, diry) of None bij (bijna) horizontale normaal
+    """
+    dl = (normal.X * normal.X + normal.Y * normal.Y) ** 0.5
+    if dl < 1e-9:
+        return None
+    return (-normal.Y / dl, normal.X / dl)
+
+
+def _match_opening_to_face(opening, dirx, diry, base_s, smin, smax,
+                           zmin, zmax, o0):
+    """Match een opening aan een wandvlak via range-overlap + clamp.
+
+    De opening-geometrie-vertices worden geprojecteerd op de FACE-richting
+    (niet HandOrientation). Bij overlap wordt het gat geclampt tot binnen de
+    face-grenzen (marge HOLE_CLAMP_MARGIN_FT naar binnen) zodat het gat altijd
+    binnen de outer-loop valt.
+
+    Args:
+        opening: dict uit _opening_rect (vereist "vertices")
+        dirx, diry: horizontale FACE-richting
+        base_s: referentie-s van outer-loop oorsprong (o0)
+        smin, smax: face s-range (langs dir)
+        zmin, zmax: face z-range
+        o0: XYZ oorsprong van de outer-loop (voor terug-projectie)
+
+    Returns:
+        (inner_corners list[XYZ], hole_area_m2 float) bij match, anders None
+    """
+    vertices = opening.get("vertices")
+    if not vertices:
+        return None
+
+    s_vals = [v.X * dirx + v.Y * diry for v in vertices]
+    os0 = min(s_vals)
+    os1 = max(s_vals)
+    oz0 = min(v.Z for v in vertices)
+    oz1 = max(v.Z for v in vertices)
+
+    # MATCH = range-overlap (strikte overlap, geen rand-aanraking)
+    if not (os1 > smin and os0 < smax and oz1 > zmin and oz0 < zmax):
+        return None
+
+    # CLAMP tot face-grenzen (marge naar binnen)
+    cs0 = max(os0, smin + HOLE_CLAMP_MARGIN_FT)
+    cs1 = min(os1, smax - HOLE_CLAMP_MARGIN_FT)
+    cz0 = max(oz0, zmin + HOLE_CLAMP_MARGIN_FT)
+    cz1 = min(oz1, zmax - HOLE_CLAMP_MARGIN_FT)
+
+    if not (cs1 > cs0 and cz1 > cz0):
+        return None
+
+    def pt(s, z):
+        return XYZ(
+            o0.X + dirx * (s - base_s),
+            o0.Y + diry * (s - base_s),
+            z,
+        )
+
+    # Hoekvolgorde (cs0,cz0),(cs0,cz1),(cs1,cz1),(cs1,cz0).
+    # _build_directshape_face_with_holes draait deze om (reversed) voor
+    # de tegengestelde winding t.o.v. de outer-loop.
+    corners = [
+        pt(cs0, cz0),
+        pt(cs0, cz1),
+        pt(cs1, cz1),
+        pt(cs1, cz0),
+    ]
+    hole_area_m2 = (cs1 - cs0) * (cz1 - cz0) * SQFT_TO_M2
+    return (corners, hole_area_m2)
+
+
+# =============================================================================
 # Openingen (deuren / ramen)
 # =============================================================================
 def _collect_solids_from_geom(geom_element, out_solids):
@@ -321,25 +524,33 @@ def _opening_direction(insert, host_wall):
     return None
 
 
-def _build_opening_triangles(insert, host_wall, room_center):
-    """Bouw de 2 driehoeken voor een opening-rechthoek in het wandvlak.
+def _opening_rect(insert, host_wall):
+    """Bepaal de rechthoek-data van een opening in het wandvlak.
+
+    Bouwt een platte rechthoek (4 hoeken) uit de bounding-extent van de
+    opening-geometrie, geprojecteerd op het wandvlak. Onafhankelijk van
+    ruimtecentrum of offset (dat doet de caller).
 
     Args:
         insert: FamilyInstance (deur/raam)
         host_wall: Wall element
-        room_center: XYZ ruimtecentrum (voor offset-richting)
 
     Returns:
-        list van (v0, v1, v2) tuples (2 driehoeken) of []
+        dict met keys:
+            corners: list[XYZ] (4 hoeken, volgorde c0,c1,c2,c3)
+            center: XYZ middelpunt
+            area_m2: float oppervlak in m2
+            direction: (dx, dy) horizontale wandrichting
+        of None bij faal
     """
     direction = _opening_direction(insert, host_wall)
     if direction is None:
-        return []
+        return None
     dx, dy = direction
 
     vertices = _opening_vertices(insert)
     if not vertices:
-        return []
+        return None
 
     # Centroid (cx, cy)
     n = len(vertices)
@@ -369,31 +580,82 @@ def _build_opening_triangles(insert, host_wall, room_center):
     c2 = corner(smax, zmax)
     c3 = corner(smin, zmax)
 
-    # Wand-normaal (nx, ny) = (-dy, dx); offset richting ruimtecentrum
+    width_ft = smax - smin
+    height_ft = zmax - zmin
+    area_m2 = internal_to_sqm(width_ft * height_ft)
+
+    center = XYZ((c0.X + c2.X) * 0.5, (c0.Y + c2.Y) * 0.5,
+                 (zmin + zmax) * 0.5)
+
+    return {
+        "corners": [c0, c1, c2, c3],
+        "center": center,
+        "area_m2": area_m2,
+        "direction": (dx, dy),
+        "vertices": vertices,
+    }
+
+
+def _offset_corners_to_center(corners, direction, room_center, offset_mm):
+    """Verschuif rechthoek-hoeken langs de wandnormaal richting ruimtecentrum.
+
+    Args:
+        corners: list[XYZ] (4 hoeken)
+        direction: (dx, dy) horizontale wandrichting
+        room_center: XYZ ruimtecentrum
+        offset_mm: offset in mm
+
+    Returns:
+        list[XYZ] verschoven hoeken
+    """
+    dx, dy = direction
     nx = -dy
     ny = dx
+    cx = sum(p.X for p in corners) / len(corners)
+    cy = sum(p.Y for p in corners) / len(corners)
     to_center_x = room_center.X - cx
     to_center_y = room_center.Y - cy
     if (nx * to_center_x + ny * to_center_y) < 0:
         nx = -nx
         ny = -ny
-
-    offset = OPENING_OFFSET_MM * MM_TO_FEET
+    offset = offset_mm * MM_TO_FEET
     ox = nx * offset
     oy = ny * offset
+    return [XYZ(p.X + ox, p.Y + oy, p.Z) for p in corners]
 
-    def shift(p):
-        return XYZ(p.X + ox, p.Y + oy, p.Z)
 
-    c0 = shift(c0)
-    c1 = shift(c1)
-    c2 = shift(c2)
-    c3 = shift(c3)
-
+def _corners_to_triangles(corners):
+    """Trianguleer een rechthoek (4 hoeken) naar 2 driehoeken."""
+    if len(corners) < 4:
+        return []
+    c0, c1, c2, c3 = corners[0], corners[1], corners[2], corners[3]
     return [
         (c0, c1, c2),
         (c0, c2, c3),
     ]
+
+
+def _build_opening_triangles(insert, host_wall, room_center):
+    """Bouw de 2 driehoeken voor een opening-rechthoek in het wandvlak.
+
+    Fallback-render: losse blauwe rechthoek met offset richting ruimtecentrum
+    (gebruikt wanneer de opening niet in een wandvlak gesneden kon worden).
+
+    Args:
+        insert: FamilyInstance (deur/raam)
+        host_wall: Wall element
+        room_center: XYZ ruimtecentrum (voor offset-richting)
+
+    Returns:
+        list van (v0, v1, v2) tuples (2 driehoeken) of []
+    """
+    rect = _opening_rect(insert, host_wall)
+    if rect is None:
+        return []
+    shifted = _offset_corners_to_center(
+        rect["corners"], rect["direction"], room_center, OPENING_OFFSET_MM
+    )
+    return _corners_to_triangles(shifted)
 
 
 def _room_center(room_element):
@@ -452,6 +714,8 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
         "slivers_hidden": 0,
         "openings": 0,
         "faces_failed": 0,
+        "netto_wall_m2": 0.0,
+        "holes_cut": 0,
     }
 
     opt = SpatialElementBoundaryOptions()
@@ -490,6 +754,10 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
 
         # Wanden waarvoor we openingen moeten zoeken (niet-curtain hosts)
         host_wall_ids = set()
+
+        # Niet-curtain wandvlakken die we pas renderen NA opening-detectie,
+        # zodat we openingen er als gat uit kunnen snijden.
+        deferred_walls = []
 
         for face in solid.Faces:
             try:
@@ -540,6 +808,17 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                                 if host_el is not None:
                                     host_wall_ids.add(hid)
 
+                # Niet-curtain wandvlakken uitstellen (gat-snijden later)
+                if orient == "wall":
+                    deferred_walls.append({
+                        "face": face,
+                        "normal": normal,
+                        "area_m2": area_m2,
+                        "outer_pts": _face_outer_loop(face),
+                        "host_ids": set(hosts),
+                    })
+                    continue
+
                 triangles = _face_to_triangles(face)
                 comment = "{0} {1} {2}".format(
                     COMMENTS_PREFIX, room_number, orient
@@ -554,13 +833,13 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         stats["bot"] += 1
                     elif orient == "vliesgevel":
                         stats["open"] += 1
-                    else:
-                        stats["wall"] += 1
             except Exception:
                 stats["faces_failed"] += 1
                 continue
 
-        # --- Openingen (deuren/ramen) per niet-curtain host-wand ---
+        # --- Openingen verzamelen voor niet-curtain host-wanden ---
+        # key = insert IntegerValue, value = dict(rect-data + wall + insert)
+        room_openings = {}
         if show_openings:
             for wid in host_wall_ids:
                 try:
@@ -576,27 +855,141 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         ins_key = ins_id.IntegerValue
                         if ins_key in rendered_openings:
                             continue
+                        if ins_key in room_openings:
+                            continue
                         insert = doc.GetElement(ins_id)
                         if insert is None:
                             continue
                         cat = insert.Category
                         if cat is None or cat.Name not in OPENING_CATEGORIES:
                             continue
-
-                        tris = _build_opening_triangles(insert, wall, center)
-                        if not tris:
+                        rect = _opening_rect(insert, wall)
+                        if rect is None:
                             continue
-                        comment = "{0} {1} opening".format(
-                            COMMENTS_PREFIX, room_number
-                        )
-                        ds = _build_directshape_from_triangles(
-                            doc, tris, material_ids[MAT_OPEN[0]], comment
-                        )
-                        if ds is not None:
-                            rendered_openings.add(ins_key)
-                            stats["openings"] += 1
+                        rect["insert"] = insert
+                        rect["wall"] = wall
+                        rect["host_wall_id"] = wid
+                        room_openings[ins_key] = rect
                     except Exception:
                         continue
+
+        # --- Wandvlakken renderen met gaten uit gematchte openingen ---
+        consumed = set()
+        for wd in deferred_walls:
+            try:
+                face = wd["face"]
+                normal = wd["normal"]
+                outer_pts = wd["outer_pts"]
+                wall_host_ids = wd.get("host_ids", set())
+
+                comment = "{0} {1} wall".format(COMMENTS_PREFIX, room_number)
+
+                # Horizontale FACE-richting + face s/z-ranges uit outer-loop
+                fdir = _face_direction(normal)
+                if outer_pts and fdir is not None:
+                    dirx, diry = fdir
+                    o0 = outer_pts[0]
+                    base_s = o0.X * dirx + o0.Y * diry
+                    s_vals = [p.X * dirx + p.Y * diry for p in outer_pts]
+                    smin = min(s_vals)
+                    smax = max(s_vals)
+                    zmin = min(p.Z for p in outer_pts)
+                    zmax = max(p.Z for p in outer_pts)
+
+                    # Match openingen: host-wall-id-koppeling + range-overlap
+                    matched = []   # (ins_key, inner_corners, hole_area_m2, rect)
+                    for ins_key, rect in room_openings.items():
+                        if ins_key in consumed:
+                            continue
+                        # Koppel via host-wall-id (insert hoort bij wall die ook
+                        # host van DEZE face is) — voorkomt false matches op
+                        # verre segmenten van lange wanden.
+                        if rect.get("host_wall_id") not in wall_host_ids:
+                            continue
+                        hit = _match_opening_to_face(
+                            rect, dirx, diry, base_s,
+                            smin, smax, zmin, zmax, o0
+                        )
+                        if hit is not None:
+                            matched.append((ins_key, hit[0], hit[1], rect))
+                else:
+                    matched = []
+
+                holes = [m[1] for m in matched]
+
+                ds = None
+                if outer_pts and holes:
+                    ds = _build_directshape_face_with_holes(
+                        doc, outer_pts, holes,
+                        material_ids[MAT_WALL[0]], normal, comment
+                    )
+
+                if ds is None:
+                    # Fallback: volle gele wand zonder gat (altijd zichtbaar)
+                    triangles = _face_to_triangles(face)
+                    ds = _build_directshape_from_triangles(
+                        doc, triangles, material_ids[MAT_WALL[0]], comment
+                    )
+                    # Geen gaten gesneden -> bruto area, geen netto-aftrek
+                    if ds is not None:
+                        stats["wall"] += 1
+                        stats["netto_wall_m2"] += wd["area_m2"]
+                    continue
+
+                # Gat(en) succesvol gesneden
+                stats["wall"] += 1
+                opening_area = sum(m[2] for m in matched)
+                netto = wd["area_m2"] - opening_area
+                if netto < 0.0:
+                    netto = 0.0
+                stats["netto_wall_m2"] += netto
+
+                # Render gematchte openingen als blauwe rechthoek IN het gat
+                for ins_key, inner_corners, hole_area, rect in matched:
+                    consumed.add(ins_key)
+                    stats["holes_cut"] += 1
+                    shifted = _offset_corners_to_center(
+                        inner_corners, rect["direction"], center,
+                        HOLE_OPENING_OFFSET_MM
+                    )
+                    tris = _corners_to_triangles(shifted)
+                    open_comment = "{0} {1} opening".format(
+                        COMMENTS_PREFIX, room_number
+                    )
+                    ods = _build_directshape_from_triangles(
+                        doc, tris, material_ids[MAT_OPEN[0]], open_comment
+                    )
+                    if ods is not None:
+                        rendered_openings.add(ins_key)
+                        stats["openings"] += 1
+            except Exception:
+                stats["faces_failed"] += 1
+                continue
+
+        # --- Niet-gematchte openingen: fallback losse blauwe rechthoek ---
+        if show_openings:
+            for ins_key, rect in room_openings.items():
+                if ins_key in consumed:
+                    continue
+                if ins_key in rendered_openings:
+                    continue
+                try:
+                    tris = _build_opening_triangles(
+                        rect["insert"], rect["wall"], center
+                    )
+                    if not tris:
+                        continue
+                    comment = "{0} {1} opening".format(
+                        COMMENTS_PREFIX, room_number
+                    )
+                    ods = _build_directshape_from_triangles(
+                        doc, tris, material_ids[MAT_OPEN[0]], comment
+                    )
+                    if ods is not None:
+                        rendered_openings.add(ins_key)
+                        stats["openings"] += 1
+                except Exception:
+                    continue
 
         stats["rooms_processed"] += 1
 
