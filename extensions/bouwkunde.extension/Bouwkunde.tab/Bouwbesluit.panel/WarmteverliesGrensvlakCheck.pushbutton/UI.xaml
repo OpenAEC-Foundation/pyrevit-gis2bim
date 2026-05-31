@@ -212,7 +212,7 @@
                        Style="{StaticResource FieldLabel}"/>
             <TextBox x:Name="txt_min_area"
                      Style="{StaticResource StandardTextBox}"
-                     Text="0.10"
+                     Text="0.5"
                      Margin="0,0,0,16"/>
 
             <CheckBox x:Name="chk_openings"
@@ -228,7 +228,7 @@
             <CheckBox x:Name="chk_heated"
                       Style="{StaticResource StandardCheckBox}"
                       Content="Alleen verwarmde ruimten"
-                      IsChecked="True"/>
+                      IsChecked="False"/>
 
             <Border Background="{StaticResource LightGrayBrush}"
                     CornerRadius="4" Padding="12,8" Margin="0,8,0,0">

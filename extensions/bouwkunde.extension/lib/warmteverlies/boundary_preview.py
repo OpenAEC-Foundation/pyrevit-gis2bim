@@ -237,6 +237,28 @@ def _is_curtain_wall(element):
         return False
 
 
+def _is_glass_wall(doc, element):
+    """Geldt dit wand-element als vliesgevel/opening voor warmteverlies?
+
+    True voor (a) echte curtain walls (CurtainGrid) en (b) gewone wanden met
+    een glas-compound, herkend aan de 3BM-typenaamconventie ('glas' in de
+    Type-naam, bv. 28_CWA_glas20mm). Beide tellen als opening: overwegend glas
+    draagt thermisch als raam, niet als dichte wand.
+    """
+    try:
+        if _is_curtain_wall(element):
+            return True
+    except Exception:
+        pass
+    try:
+        tn = _element_type_name(doc, element) or ""
+        if "glas" in tn.lower():
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _build_directshape_from_triangles(doc, triangles, material_id, comment):
     """Bouw een DirectShape uit een lijst driehoeken (elk 3 XYZ).
 
@@ -1592,6 +1614,66 @@ def _type_stack_for_face(doc, intersector, centroid, outward, cutoff_m=None):
     return " > ".join(ordered)
 
 
+def _face_sample_points(face, n=3):
+    """Genereer tot n*n sample-punten verdeeld over het vlak (binnen de
+    face-grenzen). Gebruikt om de type-stapel-raycast vanuit meerdere punten
+    te schieten i.p.v. alleen het zwaartepunt — dat laatste kan op een
+    deur/raam-opening vallen waardoor de straal de wand mist.
+    """
+    pts = []
+    try:
+        bb = face.GetBoundingBox()
+        umin = bb.Min.U
+        vmin = bb.Min.V
+        umax = bb.Max.U
+        vmax = bb.Max.V
+        for i in range(n):
+            for j in range(n):
+                u = umin + (umax - umin) * (i + 0.5) / n
+                v = vmin + (vmax - vmin) * (j + 0.5) / n
+                uv = UV(u, v)
+                try:
+                    if face.IsInside(uv):
+                        pts.append(face.Evaluate(uv))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return pts
+
+
+def _type_stack_for_face_sampled(doc, intersector, face, outward, cutoff_m,
+                                 fallback_centroid=None):
+    """Bepaal de type-stapel via meerdere sample-punten over het vlak.
+
+    Schiet de type-stapel-raycast vanuit een raster van punten op het vlak en
+    kiest de meest-voorkomende niet-lege stapel (meerderheid). Punten die op
+    een deur/raam-opening vallen (en dus de buurruimte in schieten) zijn in de
+    minderheid en worden zo weggestemd. Valt terug op het zwaartepunt als er
+    geen sample-punten binnen het vlak liggen.
+    """
+    samples = _face_sample_points(face)
+    if fallback_centroid is not None:
+        samples.append(fallback_centroid)
+    counts = {}
+    for pt in samples:
+        try:
+            s = _type_stack_for_face(doc, intersector, pt, outward, cutoff_m)
+        except Exception:
+            s = ""
+        if s:
+            counts[s] = counts.get(s, 0) + 1
+    if not counts:
+        return ""
+    # Meest voorkomende; gelijke stand -> meeste lagen (meeste '>').
+    best = sorted(
+        counts.items(),
+        key=lambda kv: (kv[1], kv[0].count(">")),
+        reverse=True,
+    )
+    return best[0][0]
+
+
 def _first_3d_view_family_type_id(doc):
     """Vind het eerste ViewFamilyType voor 3D-views (voor de temp-view).
 
@@ -1818,11 +1900,11 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         mat_name = MAT_WALL[0]
                         orient = "wall"
                     else:
-                        # Check curtain wall onder de hosts
+                        # Check vliesgevel/glaswand onder de hosts
                         is_curtain = False
                         for hid in hosts:
                             host_el = doc.GetElement(ElementId(hid))
-                            if host_el is not None and _is_curtain_wall(host_el):
+                            if host_el is not None and _is_glass_wall(doc, host_el):
                                 is_curtain = True
                                 break
                         if is_curtain:
@@ -1969,8 +2051,9 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 # Type-stapel via raycast (afgekapt op buur-cutoff, 1x per wand)
                 wall_type_stapel = ""
                 try:
-                    wall_type_stapel = _type_stack_for_face(
-                        doc, intersector, w_centroid, w_outward, wall_cutoff_m
+                    wall_type_stapel = _type_stack_for_face_sampled(
+                        doc, intersector, face, w_outward, wall_cutoff_m,
+                        w_centroid
                     )
                 except Exception:
                     stats["type_stack_failed"] += 1
@@ -2069,6 +2152,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             ods, room_label, "BUITEN", "exterior",
                             ORIENT_LABEL.get("open", "opening"),
                             hole_area, wall_host_type,
+                            _element_type_name(doc, rect["insert"]),
                         )
             except Exception:
                 stats["faces_failed"] += 1
@@ -2105,6 +2189,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             ORIENT_LABEL.get("open", "opening"),
                             rect.get("area_m2", 0.0),
                             _innermost_host_type_name(doc, host_ids),
+                            _element_type_name(doc, rect["insert"]),
                         )
                 except Exception:
                     continue

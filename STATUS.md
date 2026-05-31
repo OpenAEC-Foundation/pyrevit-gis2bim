@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - Status
 
-*Laatste update: 24 mei 2026*
+*Laatste update: 31 mei 2026*
 
 ---
 
@@ -14,6 +14,7 @@
 | VentilatieBalans | Bouwbesluit | WinForms | Stabiel | Ventilatiebalans per ruimtezone |
 | HellingbaanGenerator | Bouwbesluit | **WPF** | Stabiel | NEN 2443 hellingbanen met DirectShape |
 | TrapTekenen (Trap 2D) | Bouwbesluit | pyRevit forms | **WIP** | L-trap onderkwart 2D-plattegrond, 4 verdrijvingsmethoden, polygon-input (24 mei) |
+| WarmteverliesGrensvlakCheck | Bouwbesluit | **WPF** | Stabiel | Visuele SEGC-grensvlak-controle vóór warmteverlies-export, met shared params per vlak |
 | AutoDim | Maatvoering | **WPF** | Stabiel | Automatische maatvoering via Detail Lines |
 | CrossDim | Maatvoering | WinForms | Stabiel | Kruislings dimensioneren |
 | WandVloerAfwerking | Afwerking | WinForms | Stabiel | Wand/vloer afwerkingslagen per ruimte |

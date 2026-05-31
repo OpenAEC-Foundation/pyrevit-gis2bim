@@ -61,7 +61,7 @@ from warmteverlies.boundary_preview import (
 # =============================================================================
 VIEW_NAME = "WV - Grensvlak-check"
 COMMENTS_PREFIX = "WV_BND"
-DEFAULT_MIN_FACE_AREA_M2 = 0.10
+DEFAULT_MIN_FACE_AREA_M2 = 0.5
 
 
 # =============================================================================

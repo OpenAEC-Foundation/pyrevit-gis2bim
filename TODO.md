@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 24 mei 2026*
+*Laatste update: 31 mei 2026*
 
 ---
 
@@ -36,7 +36,7 @@
 
 > Nieuw feature-idee (sessie 30-05, geprototyped via Revit MCP op `2786_Bouwkundige_model`). Doel: de gebruiker krijgt vóór JSON-export een **visuele controle** van wat de exporter "ziet" — gekleurde SEGC-grensvlakken per ruimte, direct in een 3D-view.
 
-> **GEÏMPLEMENTEERD 30-05** (commit volgt): `WarmteverliesGrensvlakCheck.pushbutton` + `WarmteverliesGrensvlakWis.pushbutton` + `lib/warmteverlies/boundary_preview.py`. Kern live gevalideerd via Revit MCP op `2786_Bouwkundige_model` (21 ruimten, 0 failures, vliesgevel/deuren/ramen/vloer-counts matchen het prototype). **Nog te testen: de pushbutton-UI (forms-prompts) in Revit zelf.** De 4 parameters zijn geïmplementeerd (min vlakgrootte, openingen tonen, host-loze slivers verbergen, alleen verwarmde ruimten).
+> **GEÏMPLEMENTEERD 30-05** (commit volgt): `WarmteverliesGrensvlakCheck.pushbutton` + `WarmteverliesGrensvlakWis.pushbutton` + `lib/warmteverlies/boundary_preview.py`. Kern live gevalideerd via Revit MCP op `2786_Bouwkundige_model` (21 ruimten, 0 failures, vliesgevel/deuren/ramen/vloer-counts matchen het prototype). **UI getest in Revit 31-05: dialog/help/Tonen/Wissen OK.** De 4 parameters zijn geïmplementeerd (min vlakgrootte, openingen tonen, host-loze slivers verbergen, alleen verwarmde ruimten).
 
 - [x] ~~`WarmteverliesGrensvlakCheck.pushbutton`~~ naast de bestaande Export-knop (`Bouwbesluit.panel`) — rendert per ruimte de SEGC-grensvlakken als gekleurde DirectShapes (Generic Models, Comments-prefix `WV_BND`).
   - Kleur: **rood** = dak/plafond (n.Z > 0,7), **geel** = wand, **groen** = vloer (n.Z < −0,7), **blauw** = openingen (vliesgevel via eigen schuine SEGC-face + deuren/ramen als rechthoek).
@@ -47,6 +47,7 @@
   - [ ] **Iconen** voor de twee pushbuttons (nu pyRevit default-icoon).
 - [x] ~~**Shared parameters per grensvlak**~~ (commits `d78a3fe` + `85a2ec3`, 30-05 deel 3) — elk WV_BND-vlak draagt 7 instance-params (groep "Berekeningen", prefix `warmteverlies_`): `ruimte`, `naar_ruimte`, `grenstype`, `orientatie`, `oppervlak_m2`, `host_type`, `type_stapel`. Plus type-param `warmteverlies_afwerklaag` (Yes/No, gebootstrapt uit Type Comments "afwerk").
   - Adjacency **geometrisch** via `GetRoomAtPoint(punt, room-phase)` + naar-buiten-normaal-probe (phase verplicht!). Type-stapel via hergebruik scanner-raycast, afgekapt op min(buurruimte-afstand, eerste luchtspleet), **element-bewust** (voor/achtervlak van 1 element ≠ spleet). Afwerklaag-Types uit de stapel gefilterd. Resultaat op 2786: 147 → **19 distinct per-vlak type-stapels**, isolatie behouden.
+- [x] ~~**UI-polish + bugfixes (31-05)**~~ — openingen krijgen kozijn/deur-Type als type_stapel (was leeg), glaswanden→opening-classificatie, multi-punt wand-stapel-sampling, defaults 0.5/verwarmd-uit.
 - [ ] **Consolidatie 19 → ~5 echte constructies** (volgende stap, hoort in `thermal_json_builder.py` = exporter #3): de per-vlak stapels samenvouwen via een **canonieke fingerprint** — lagen sorteren in vaste richting (binnen→buiten) zodat `060-TL>PIR` en `PIR>060-TL` één worden — plus merge van deel-vangsten (subset/superset met identieke kern). Doel-telling (user, model 2786): 2 daken · 1 buitenwand · 2 binnenwanden · openingen apart. Optioneel tussenstapje: volgorde-canonicalisatie al in `boundary_preview.py::_type_stack_for_face`.
 - **Ontwerpregel (KRITISCH):** preview en export MOETEN dezelfde face-extractie/-filter/-groepering delen (`_get_faces_from_segc` + #3-host-groepering). Aparte implementatie = divergentie = onbetrouwbare check.
 - **Volgorde:** eerst #3 (host-element-groepering) + #5 (vliesgevel → `curtain_wall`) perfectioneren, dán de preview bovenop die gedeelde code — dan toont de preview meteen de gegroepeerde, schone constructies.
