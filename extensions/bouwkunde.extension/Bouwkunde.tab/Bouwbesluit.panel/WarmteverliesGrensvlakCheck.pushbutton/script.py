@@ -54,6 +54,7 @@ from warmteverlies.boundary_preview import (
     ensure_materials,
     render_room_boundaries,
     clear_boundary_shapes,
+    assign_construction_catalog,
 )
 
 # =============================================================================
@@ -431,6 +432,22 @@ def _do_render(doc, params):
         stats = render_room_boundaries(
             doc, rooms, material_ids, params, output=output
         )
+        # Constructie-catalogus toewijzen (binnen dezelfde transactie)
+        try:
+            catalog_stats = assign_construction_catalog(doc)
+            output.print_md(
+                "Constructie-catalogus: **{0}** typen, {1} openingen, "
+                "{2} slivers, {3} onbekend".format(
+                    catalog_stats["constructie_typen"],
+                    catalog_stats["opening_typen"],
+                    catalog_stats["slivers"],
+                    catalog_stats["onbekend"]
+                )
+            )
+        except Exception as ex:
+            output.print_md(
+                "*Waarschuwing: Constructie-catalogus toewijzing mislukt: {0}*".format(str(ex))
+            )
         t.Commit()
     except Exception as ex:
         if t.HasStarted() and not t.HasEnded():

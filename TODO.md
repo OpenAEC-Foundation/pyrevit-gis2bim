@@ -51,12 +51,13 @@
 - [x] ~~**View-behoud-fix (31-05)**~~ — WV-Grensvlak-check 3D view wordt niet meer verwijderd/gerecreëerd bij Tonen, blijft op sheet met template staan.
 - [x] ~~**Schedule "WV - Grensvlakken per ruimte" + WV-3D-view geplaatst op sheet `UO-901` (31-05)**~~ — volledig operationeel.
 
-### Constructie-type-catalogus (Fase 1+2) — open
+### Constructie-type-catalogus (Fase 1 afgerond, Fase 2 open)
 
 **Doel:** model-brede tabel met genummerde named typen (`buitenwand1`, `dak1`…) + laag-opbouw-schedule (materiaal·dikte·λ) "selecteerbaar voor de berekening".
 
+- [x] ~~**Fase 1 — constructie-type-catalogus (named typen + merge)**~~ — **AFGEROND (31-05)**: `assign_construction_catalog()` in `boundary_preview.py` implementeert deel-vangst-merge algoritme via orientatie+grenstype bucketing, reverse-merge, wig-allowlist, dominante ankers, fold van onder-vangsten met `vangst=onvolledig`-flag. 2 nieuwe shared params `warmteverlies_constructie` + `warmteverlies_vangst`. Live geverifieerd op model 2786: 7 construction-typen + 9 opening-typen, 185 faces benoemd.
 - [x] ~~**Blokker #1 — vliesgevel achter room-separation-line → opening**~~ — opgelost in commit `ddc1892` (31-05).
-- [ ] **Blokker #2 — deel-vangst-merge** — korte stapels die prefix/subset zijn van een volledige binnen dezelfde categorie samenvoegen (`160`⊂`160>zinkdak`⊂`160>spie>zinkdak`; `060`⊂`060>PIR>Gevel`; `120`⊂`120>Resol`). Lege stapels apart. **Eerst MCP-prototype tegen 2786, niet blind coderen.** Doel: 29→~6 typen (2 daken·1 buitenwand·2 binnenwanden·openingen apart).
+- [x] ~~**Vliesgevel-detectie verbetering**~~ — **AFGEROND (31-05)**: `_curtain_glass_behind_sampled()` multi-sample herkent curtain panels/mullions/grids + CurtainGrid-walls via meerderheidsregel. Vliesgevel achter room-separation-line wordt correct als opening geclassificeerd (id 5679438, 29.5m²).
 - [ ] **Fase 2 — laag-opbouw-schedule uit Revit** — `CompoundStructure` van component-types (`type_stapel` heeft alleen namen, geen materiaal/dikte/λ).
 - [ ] **Volgende-sessie stappen:** (1) #2-merge prototypen, (2) named-type als shared param `warmteverlies_constructie` schrijven in `boundary_preview` tijdens render, (3) schedule hergroeperen op die param (1 groep-veld, binnen Revit's 4-limiet), (4) Fase 2 laag-schedule, (5) Fase 3 named typen→JSON-export koppelen.
 

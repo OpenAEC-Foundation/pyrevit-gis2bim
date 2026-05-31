@@ -124,6 +124,8 @@ WV_PARAM_DEFS = (
     ("warmteverlies_oppervlak_m2", "number"),
     ("warmteverlies_host_type", "text"),
     ("warmteverlies_type_stapel", "text"),
+    ("warmteverlies_constructie", "text"),
+    ("warmteverlies_vangst", "text"),
 )
 
 # orient (intern) -> NL label voor warmteverlies_orientatie
@@ -261,32 +263,46 @@ def _is_glass_wall(doc, element):
 
 # OST_CurtainWallPanels (glas-paneel) en OST_GenericModel (eigen WV-shapes)
 CURTAIN_PANEL_CAT_ID = -2000170
+CURTAIN_MULLION_CAT_ID = -2000171
+CURTAIN_GRID_CAT_ID = -2000321
+CURTAIN_CATEGORIES = (CURTAIN_PANEL_CAT_ID, CURTAIN_MULLION_CAT_ID, CURTAIN_GRID_CAT_ID)
 GENERIC_MODEL_CAT_ID = -2000151
 
 
-def _curtain_glass_behind(doc, intersector, centroid, outward, max_dist_m=0.4):
-    """True als het eerste echte element achter dit vlak een curtain-wall-paneel
-    (glas) is. Detecteert een vliesgevel die NIET de room-bounding host is maar
-    er vlak achter zit — bv. een bewust geplaatste room-separation-line op de
-    gevel met de curtain wall erachter. Negeert eigen WV-shapes (Generic Models)
-    en de IGNORE-categorieen.
-    """
-    if intersector is None or centroid is None or outward is None:
+def _is_curtain_glass_hit(hit):
+    """True als een hit een curtain/glas-element is (panel/mullion/grid of CurtainGrid wall)."""
+    if hit is None:
         return False
-    back = 0.05 * METER_TO_FEET
-    origin = XYZ(
-        centroid.X - outward.X * back,
-        centroid.Y - outward.Y * back,
-        centroid.Z - outward.Z * back,
-    )
     try:
-        refs = intersector.Find(origin, outward)
+        cat_id = hit.get("category_id")
+        if cat_id in CURTAIN_CATEGORIES:
+            return True
+        # Check voor CurtainGrid Wall (-2000011)
+        if cat_id == -2000011:  # OST_Walls
+            element = hit.get("element")
+            if element is not None and _is_curtain_wall(element):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _curtain_glass_behind_single(doc, intersector, origin_point, outward, max_dist_m=0.4):
+    """Single-point raycast voor curtain/glas detectie.
+
+    Returns True als de dichtstbijzijnde hit curtain/glas is.
+    """
+    if intersector is None or origin_point is None or outward is None:
+        return False
+    try:
+        refs = intersector.Find(origin_point, outward)
     except Exception:
         return False
     if refs is None:
         return False
+
     best_prox = None
-    best_cat = None
+    best_hit = None
     for rwc in refs:
         try:
             prox_m = rwc.Proximity * FEET_TO_M
@@ -302,10 +318,90 @@ def _curtain_glass_behind(doc, intersector, centroid, outward, max_dist_m=0.4):
                 continue
             if best_prox is None or prox_m < best_prox:
                 best_prox = prox_m
-                best_cat = cat_id
+                best_hit = hit
         except Exception:
             continue
-    return best_prox is not None and best_cat == CURTAIN_PANEL_CAT_ID
+
+    return best_hit is not None and _is_curtain_glass_hit(best_hit)
+
+
+def _curtain_glass_behind(doc, intersector, centroid, outward, max_dist_m=0.4):
+    """True als het eerste echte element achter dit vlak een curtain-wall-paneel
+    (glas) is. Detecteert een vliesgevel die NIET de room-bounding host is maar
+    er vlak achter zit — bv. een bewust geplaatste room-separation-line op de
+    gevel met de curtain wall erachter. Negeert eigen WV-shapes (Generic Models)
+    en de IGNORE-categorieen.
+
+    Uitgebreide detectie: herkent curtain panels/mullions/grids EN curtain walls.
+    """
+    if centroid is None or outward is None:
+        return False
+    back = 0.05 * METER_TO_FEET
+    origin = XYZ(
+        centroid.X - outward.X * back,
+        centroid.Y - outward.Y * back,
+        centroid.Z - outward.Z * back,
+    )
+    return _curtain_glass_behind_single(doc, intersector, origin, outward, max_dist_m)
+
+
+def _curtain_glass_behind_sampled(doc, intersector, face, outward, max_dist_m=0.4):
+    """Multi-sample curtain/glas detectie over het hele vlak.
+
+    Schiet rays vanaf meerdere punten over het vlak en retourneert True als
+    de MEERDERHEID van de samples curtain/glas raakt. Dit is robuuster dan
+    single-point detectie voor vliesgevels met mullions/grids.
+
+    Args:
+        doc: Revit Document
+        intersector: ReferenceIntersector
+        face: Revit Face
+        outward: XYZ naar-buiten-normaal
+        max_dist_m: max afstand (meter) voor hits
+
+    Returns:
+        bool: True als meerderheid van samples curtain/glas raakt
+    """
+    if intersector is None or face is None or outward is None:
+        return False
+
+    # Sample-punten over het vlak + centroid als fallback
+    samples = _face_sample_points(face)
+    if not samples:
+        # Fallback op face-centroid via outer-loop
+        try:
+            outer_pts = _face_outer_loop(face)
+            centroid = _face_centroid(face, outer_pts)
+            if centroid is not None:
+                samples = [centroid]
+        except Exception:
+            pass
+
+    if not samples:
+        return False
+
+    # Test elk sample-punt
+    back = 0.05 * METER_TO_FEET
+    curtain_hits = 0
+    total_hits = 0
+
+    for sample_pt in samples:
+        try:
+            origin = XYZ(
+                sample_pt.X - outward.X * back,
+                sample_pt.Y - outward.Y * back,
+                sample_pt.Z - outward.Z * back,
+            )
+            if _curtain_glass_behind_single(doc, intersector, origin, outward, max_dist_m):
+                curtain_hits += 1
+            total_hits += 1
+        except Exception:
+            continue
+
+    # Meerderheid-regel: >50% van de samples moet curtain/glas zijn
+    if total_hits == 0:
+        return False
+    return curtain_hits > (total_hits / 2.0)
 
 
 def _build_directshape_from_triangles(doc, triangles, material_id, comment):
@@ -1813,6 +1909,320 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
 
 
 # =============================================================================
+# Constructie-type-catalogus (merge-algoritme uit het prototype)
+# =============================================================================
+
+# Constanten uit het prototype
+DOM_AREA = 50.0    # m2: stapel groter -> eigen constructie-anker
+DOM_COUNT = 10     # of >= dit aantal faces
+SLIVER_AREA = 3.0  # m2: kleiner + niet verwant = ruis
+
+GKLASSE = {"exterior": "buiten", "ground": "grond",
+           "adjacent_room": "binnen", "unheated_space": "binnen"}
+
+LABEL = {("wand", "buiten"): "buitenwand", ("wand", "binnen"): "binnenwand",
+         ("wand", "grond"): "kelderwand", ("dak", "buiten"): "dak",
+         ("vloer", "grond"): "vloer", ("vloer", "binnen"): "vloer",
+         ("vloer", "buiten"): "vloer"}
+
+# Wig/spouw-tokens voor merge-detectie
+WEDGE_PATTERNS = ("_spie", "spie", "_wig", "wig", "_spouw", "luchtspouw")
+
+
+def toks(s):
+    """Split type-stapel op ' > ' naar tuple van tokens."""
+    return tuple(t.strip() for t in s.split(">")) if s else ()
+
+
+def is_subseq(a, b):
+    """True als a een subsequence van b is."""
+    it = iter(b)
+    return all(t in it for t in a)
+
+
+def extra_tokens(short, long):
+    """Tokens in long die niet in short zitten (positioneel, short subseq long)."""
+    res = []
+    si = 0
+    for t in long:
+        if si < len(short) and t == short[si]:
+            si += 1
+        else:
+            res.append(t)
+    return res
+
+
+def is_wedge_only(short, long):
+    """True als de extra lagen van long t.o.v. short uitsluitend wiggen zijn."""
+    extra = extra_tokens(short, long)
+    if not extra:
+        return False
+    return all(any(p in tok.lower() for p in WEDGE_PATTERNS) for tok in extra)
+
+
+def assign_construction_catalog(doc):
+    """Wijs constructie-types toe aan alle WV_BND DirectShapes via merge-algoritme.
+
+    Port van het prototype naar Revit-data. Leest alle WV_BND shapes, aggregeert
+    naar groepen zoals het prototype, past het bucketing/merge-algoritme toe en
+    schrijft de resultaten terug naar warmteverlies_constructie en warmteverlies_vangst.
+
+    Args:
+        doc: Revit Document
+
+    Returns:
+        dict: tellingen van constructie-typen per categorie
+    """
+    # Verzamel alle WV_BND DirectShapes
+    collector = (
+        FilteredElementCollector(doc)
+        .OfClass(DirectShape)
+        .WhereElementIsNotElementType()
+    )
+
+    # Data ophalen uit shapes (per-shape)
+    shapes_data = []
+    id_to_element = {}  # Robuuste ID->Element mapping voor write-back
+
+    for ds in collector:
+        try:
+            # Check Comments-prefix
+            comment_param = ds.LookupParameter("Comments")
+            if comment_param is None or not comment_param.HasValue:
+                continue
+            comment_value = comment_param.AsString()
+            if not comment_value or not comment_value.startswith(COMMENTS_PREFIX):
+                continue
+
+            # Lees warmteverlies parameters
+            orient_param = ds.LookupParameter("warmteverlies_orientatie")
+            grens_param = ds.LookupParameter("warmteverlies_grenstype")
+            stapel_param = ds.LookupParameter("warmteverlies_type_stapel")
+            area_param = ds.LookupParameter("warmteverlies_oppervlak_m2")
+
+            if not all(p and p.HasValue for p in [orient_param, grens_param]):
+                continue
+
+            orient = orient_param.AsString() or ""
+            grens = grens_param.AsString() or ""
+            stapel = stapel_param.AsString() if stapel_param and stapel_param.HasValue else ""
+            area = area_param.AsDouble() if area_param and area_param.HasValue else 0.0
+
+            # Per-shape record met element-tracking
+            element_id = ds.Id.IntegerValue
+            id_to_element[element_id] = ds
+
+            rec = {
+                "element_id": element_id,
+                "orient": orient,
+                "grens": grens,
+                "area": area,
+                "stapel": stapel
+            }
+            shapes_data.append(rec)
+
+        except Exception:
+            # Robuust: skip shapes die niet goed te lezen zijn
+            continue
+
+    if not shapes_data:
+        return {"constructie_typen": 0, "opening_typen": 0, "slivers": 0, "onbekend": 0}
+
+    # ========================================
+    # AGGREGATIE-STAP: per-shape -> groepen
+    # ========================================
+    # Groepeer op (orient, grens, stapel) zoals het prototype verwacht
+    groups = {}
+    for rec in shapes_data:
+        key = (rec["orient"], rec["grens"], rec["stapel"])
+        if key not in groups:
+            groups[key] = {
+                "orient": rec["orient"],
+                "grens": rec["grens"],
+                "stapel": rec["stapel"],
+                "klasse": GKLASSE.get(rec["grens"], "buiten"),
+                "toks": toks(rec["stapel"]),
+                "cnt": 0,
+                "area": 0.0,
+                "elements": []  # Liste van element_id's in deze groep
+            }
+        groups[key]["cnt"] += 1
+        groups[key]["area"] += rec["area"]
+        groups[key]["elements"].append(rec["element_id"])
+
+    # Converteer naar lijst voor het algoritme (zoals prototype DATA)
+    records = list(groups.values())
+
+    # ========================================
+    # ALGORITME: exact zoals het prototype
+    # ========================================
+    buckets = {}
+    openings = []
+    empties = []
+
+    for rec in records:
+        orient = rec["orient"]
+        t = rec["toks"]
+
+        if orient == "opening":
+            (empties if not t else openings).append(rec)
+            continue
+        if not t:
+            empties.append(rec)
+            continue
+        buckets.setdefault((orient, rec["klasse"]), []).append(rec)
+
+    catalog = []
+    slivers = []
+
+    for (orient, klasse), recs in buckets.items():
+        # reverse-merge
+        merged = []
+        used = [False] * len(recs)
+        for i in range(len(recs)):
+            if used[i]:
+                continue
+            a = dict(recs[i])
+            for j in range(i + 1, len(recs)):
+                if used[j]:
+                    continue
+                b = recs[j]
+                if a["toks"] == tuple(reversed(b["toks"])):
+                    keep = a if a["cnt"] >= b["cnt"] else b
+                    a["cnt"] += b["cnt"]
+                    a["area"] += b["area"]
+                    a["toks"] = keep["toks"]
+                    a["stapel"] = " > ".join(keep["toks"])
+                    # Elements lists concateneren
+                    a["elements"].extend(b["elements"])
+                    used[j] = True
+            merged.append(a)
+
+        anchors = []  # {toks, cnt, area, members:[recs]}
+        for r in sorted(merged, key=lambda x: -x["area"]):
+            dominant = r["area"] >= DOM_AREA or r["cnt"] >= DOM_COUNT
+            # zoek verwant anker (sub- of supersequence)
+            super_anchor = None  # bestaand anker waar r een vollere vangst van is
+            sub_anchor = None    # bestaand anker dat r omvat (r = onder-vangst)
+            for a in anchors:
+                if (is_subseq(a["toks"], r["toks"])
+                        and len(a["toks"]) < len(r["toks"])
+                        and is_wedge_only(a["toks"], r["toks"])):
+                    super_anchor = a
+                elif is_subseq(r["toks"], a["toks"]):
+                    if sub_anchor is None or a["area"] > sub_anchor["area"]:
+                        sub_anchor = a
+            if dominant:
+                anchors.append({"toks": r["toks"], "cnt": r["cnt"],
+                                "area": r["area"], "members": [r], "klasse": klasse,
+                                "orient": orient})
+            elif super_anchor is not None:
+                super_anchor["cnt"] += r["cnt"]
+                super_anchor["area"] += r["area"]
+                super_anchor["members"].append(r)
+            elif sub_anchor is not None:
+                sub_anchor["cnt"] += r["cnt"]
+                sub_anchor["area"] += r["area"]
+                sub_anchor["members"].append(r)
+            elif r["area"] >= SLIVER_AREA:
+                anchors.append({"toks": r["toks"], "cnt": r["cnt"],
+                                "area": r["area"], "members": [r], "klasse": klasse,
+                                "orient": orient})
+            else:
+                slivers.append(r)
+        catalog.extend(anchors)
+
+    # naamgeving per (orient, klasse), index op area desc
+    named = {}
+    for a in sorted(catalog, key=lambda x: (x["orient"], x["klasse"], -x["area"])):
+        lab = LABEL.get((a["orient"], a["klasse"]), a["orient"])
+        named.setdefault(lab, 0)
+        named[lab] += 1
+        a["name"] = "{0}{1}".format(lab, named[lab])
+        # vangst-flag per member
+        onvol = 0
+        for m in a["members"]:
+            strict_sub = (len(m["toks"]) < len(a["toks"])
+                          and is_subseq(m["toks"], a["toks"]))
+            if strict_sub and a["klasse"] in ("buiten", "grond"):
+                onvol += m["cnt"]
+        a["onvolledig_faces"] = onvol
+
+    # ========================================
+    # WRITE-BACK: per groep -> per element
+    # ========================================
+    elem_to_construction = {}
+    elem_to_vangst = {}
+
+    # Constructie-typen
+    for a in catalog:
+        construction_name = a["name"]
+        for m in a["members"]:
+            # m is nu een groep met elements-lijst
+            for element_id in m["elements"]:
+                elem_to_construction[element_id] = construction_name
+                # Check voor onvolledige vangst (groep-level)
+                strict_sub = (len(m["toks"]) < len(a["toks"])
+                              and is_subseq(m["toks"], a["toks"]))
+                if strict_sub and a["klasse"] in ("buiten", "grond"):
+                    elem_to_vangst[element_id] = "onvolledig"
+                else:
+                    elem_to_vangst[element_id] = ""
+
+    # Openingen - elk groep apart
+    opening_counter = 1
+    for o in openings:
+        for element_id in o["elements"]:
+            if o["stapel"]:
+                # Gebruik type-stapel als opening-naam
+                elem_to_construction[element_id] = o["stapel"]
+            else:
+                # Fallback op genummerde opening
+                elem_to_construction[element_id] = "opening{0}".format(opening_counter)
+            elem_to_vangst[element_id] = ""
+        if not o["stapel"]:
+            opening_counter += 1
+
+    # Slivers
+    for s in slivers:
+        for element_id in s["elements"]:
+            elem_to_construction[element_id] = ""
+            elem_to_vangst[element_id] = ""
+
+    # Lege stapels (onbekend)
+    for e in empties:
+        for element_id in e["elements"]:
+            elem_to_construction[element_id] = ""
+            elem_to_vangst[element_id] = "onbekend"
+
+    # Schrijf terug naar alle elements
+    for element_id, element in id_to_element.items():
+        try:
+            # warmteverlies_constructie
+            const_param = element.LookupParameter("warmteverlies_constructie")
+            if const_param is not None and not const_param.IsReadOnly:
+                const_val = elem_to_construction.get(element_id, "")
+                const_param.Set(const_val)
+
+            # warmteverlies_vangst
+            vangst_param = element.LookupParameter("warmteverlies_vangst")
+            if vangst_param is not None and not vangst_param.IsReadOnly:
+                vangst_val = elem_to_vangst.get(element_id, "")
+                vangst_param.Set(vangst_val)
+        except Exception:
+            # Skip elements waar parameter-schrijven faalt
+            continue
+
+    # Return tellingen
+    return {
+        "constructie_typen": len(catalog),
+        "opening_typen": len(openings),
+        "slivers": len(slivers),
+        "onbekend": len(empties)
+    }
+
+
+# =============================================================================
 # Hoofdrenderfunctie
 # =============================================================================
 def render_room_boundaries(doc, rooms, material_ids, params, output=None):
@@ -2114,8 +2524,8 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 # Vliesgevel achter een room-separation-line: lege stapel +
                 # curtain-paneel vlak erachter -> dit vlak IS de glas-gevel,
                 # niet een dichte wand. Render als blauwe opening en ga door.
-                if not wall_type_stapel and _curtain_glass_behind(
-                    doc, intersector, w_centroid, w_outward
+                if not wall_type_stapel and _curtain_glass_behind_sampled(
+                    doc, intersector, face, w_outward
                 ):
                     triangles = _face_to_triangles(face)
                     gds = _build_directshape_from_triangles(
