@@ -126,6 +126,7 @@ WV_PARAM_DEFS = (
     ("warmteverlies_type_stapel", "text"),
     ("warmteverlies_constructie", "text"),
     ("warmteverlies_vangst", "text"),
+    ("warmteverlies_lagen", "text"),
 )
 
 # orient (intern) -> NL label voor warmteverlies_orientatie
@@ -1578,6 +1579,26 @@ def _element_type_name(element_doc, element):
     return ""
 
 
+def _type_name_direct(type_el):
+    """Type-naam direct van een ElementType (NIET via GetTypeId — dat is voor instances)."""
+    from Autodesk.Revit.DB import BuiltInParameter, Element
+    try:
+        p = type_el.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+        if p is not None and p.HasValue:
+            v = p.AsString()
+            if v:
+                return v
+    except Exception:
+        pass
+    try:
+        v = Element.Name.__get__(type_el)
+        if v:
+            return v
+    except Exception:
+        pass
+    return ""
+
+
 def _is_afwerklaag_type(element_doc, element):
     """Is het Type van dit element gemarkeerd als afwerklaag (Yes/No)?
 
@@ -1865,8 +1886,8 @@ def _create_temp_3d_view(doc):
 
 
 def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
-                   area_m2, host_type, type_stapel=""):
-    """Zet de 7 warmteverlies_ parameters op een DirectShape (best-effort).
+                   area_m2, host_type, type_stapel="", lagen=""):
+    """Zet de 8 warmteverlies_ parameters op een DirectShape (best-effort).
 
     Number-param met float, text-params met string. Ontbrekende param wordt
     netjes overgeslagen (geen crash).
@@ -1880,6 +1901,7 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         area_m2: float netto oppervlak in m2
         host_type: str host Type-naam (innerste)
         type_stapel: str geordende type-stapel ("T1 > T2 > ...")
+        lagen: str geconcateneerde laagopbouw ("mat1 10 | mat2 20 | ...")
     """
     if ds is None:
         return
@@ -1891,6 +1913,7 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         ("warmteverlies_orientatie", orient_label),
         ("warmteverlies_host_type", host_type),
         ("warmteverlies_type_stapel", type_stapel),
+        ("warmteverlies_lagen", lagen),
     )
     for pname, pval in text_vals:
         try:
@@ -1906,6 +1929,21 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
             p.Set(round(float(area_m2), 2))
     except Exception:
         pass
+
+
+def _format_layers_string(layers):
+    """Format layers naar leesbare string: 'mat1 thickness | mat2 thickness | ...'"""
+    if not layers:
+        return ""
+    parts = []
+    for layer in layers:
+        material = layer.get("material", "Onbekend")
+        thickness = layer.get("thickness_mm", 0)
+        if thickness > 0:
+            parts.append("{0} {1}".format(material, int(round(thickness))))
+        else:
+            parts.append("{0} {1}".format(material, 0))
+    return " | ".join(parts)
 
 
 # =============================================================================
@@ -2149,18 +2187,80 @@ def assign_construction_catalog(doc):
         a["onvolledig_faces"] = onvol
 
     # ========================================
+    # LAYER EXTRACTION: bouw type-index voor laagopbouw
+    # ========================================
+    type_name_to_element = {}
+
+    # Wall Types
+    try:
+        from Autodesk.Revit.DB import WallType
+        for wt in FilteredElementCollector(doc).OfClass(WallType):
+            try:
+                name = _type_name_direct(wt)
+                if name:
+                    type_name_to_element[name] = wt
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Floor Types
+    try:
+        from Autodesk.Revit.DB import FloorType
+        for ft in FilteredElementCollector(doc).OfClass(FloorType):
+            try:
+                name = _type_name_direct(ft)
+                if name:
+                    type_name_to_element[name] = ft
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Roof Types
+    try:
+        from Autodesk.Revit.DB import RoofType
+        for rt in FilteredElementCollector(doc).OfClass(RoofType):
+            try:
+                name = _type_name_direct(rt)
+                if name:
+                    type_name_to_element[name] = rt
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # ========================================
     # WRITE-BACK: per groep -> per element
     # ========================================
     elem_to_construction = {}
     elem_to_vangst = {}
+    elem_to_lagen = {}
 
     # Constructie-typen
     for a in catalog:
         construction_name = a["name"]
+
+        # Bepaal canonieke stapel van het anker (dominante stapel)
+        canonical_toks = a["toks"]
+        canonical_stapel = " > ".join(canonical_toks) if canonical_toks else ""
+
+        # Extraheer laagopbouw van canonieke stapel
+        layers_string = ""
+        if canonical_toks:
+            all_layers = []
+            for type_name in canonical_toks:
+                if type_name in type_name_to_element:
+                    type_element = type_name_to_element[type_name]
+                    layers = _extract_layers_from_type(doc, type_element, type_name)
+                    all_layers.extend(layers)
+            layers_string = _format_layers_string(all_layers)
+
         for m in a["members"]:
             # m is nu een groep met elements-lijst
             for element_id in m["elements"]:
                 elem_to_construction[element_id] = construction_name
+                elem_to_lagen[element_id] = layers_string
                 # Check voor onvolledige vangst (groep-level)
                 strict_sub = (len(m["toks"]) < len(a["toks"])
                               and is_subseq(m["toks"], a["toks"]))
@@ -2169,7 +2269,7 @@ def assign_construction_catalog(doc):
                 else:
                     elem_to_vangst[element_id] = ""
 
-    # Openingen - elk groep apart
+    # Openingen - elk groep apart (geen laagopbouw, hebben geen CompoundStructure)
     opening_counter = 1
     for o in openings:
         for element_id in o["elements"]:
@@ -2180,6 +2280,7 @@ def assign_construction_catalog(doc):
                 # Fallback op genummerde opening
                 elem_to_construction[element_id] = "opening{0}".format(opening_counter)
             elem_to_vangst[element_id] = ""
+            elem_to_lagen[element_id] = ""  # Openingen hebben geen laagopbouw
         if not o["stapel"]:
             opening_counter += 1
 
@@ -2188,12 +2289,14 @@ def assign_construction_catalog(doc):
         for element_id in s["elements"]:
             elem_to_construction[element_id] = ""
             elem_to_vangst[element_id] = ""
+            elem_to_lagen[element_id] = ""
 
     # Lege stapels (onbekend)
     for e in empties:
         for element_id in e["elements"]:
             elem_to_construction[element_id] = ""
             elem_to_vangst[element_id] = "onbekend"
+            elem_to_lagen[element_id] = ""
 
     # Schrijf terug naar alle elements
     for element_id, element in id_to_element.items():
@@ -2209,6 +2312,12 @@ def assign_construction_catalog(doc):
             if vangst_param is not None and not vangst_param.IsReadOnly:
                 vangst_val = elem_to_vangst.get(element_id, "")
                 vangst_param.Set(vangst_val)
+
+            # warmteverlies_lagen
+            lagen_param = element.LookupParameter("warmteverlies_lagen")
+            if lagen_param is not None and not lagen_param.IsReadOnly:
+                lagen_val = elem_to_lagen.get(element_id, "")
+                lagen_param.Set(lagen_val)
         except Exception:
             # Skip elements waar parameter-schrijven faalt
             continue
@@ -2220,6 +2329,74 @@ def assign_construction_catalog(doc):
         "slivers": len(slivers),
         "onbekend": len(empties)
     }
+
+
+
+def _extract_layers_from_type(doc, type_element, type_name):
+    """Extraheer layers uit een Wall/Floor/RoofType CompoundStructure.
+
+    Returns:
+        list: [{"material": str, "thickness_mm": float, "function": str, "type": str}, ...]
+    """
+    layers = []
+    try:
+        compound = type_element.GetCompoundStructure()
+        if compound is None:
+            return layers
+
+        layers_data = compound.GetLayers()
+        if not layers_data or layers_data.Count == 0:
+            return layers
+
+        from Autodesk.Revit.DB import ElementId
+
+        for i in range(layers_data.Count):
+            try:
+                layer = layers_data[i]
+
+                # Dikte in mm
+                width_ft = layer.Width
+                thickness_mm = round(width_ft * 304.8, 1)  # feet naar mm
+
+                # Materiaal
+                mat_id = layer.MaterialId
+                material_name = "Onbekend"
+                if mat_id is not None and mat_id != ElementId.InvalidElementId:
+                    material = doc.GetElement(mat_id)
+                    if material is not None:
+                        material_name = material.Name or "Onbekend"
+
+                # Layer function
+                function_name = "Structure"  # default
+                try:
+                    layer_func = layer.Function
+                    function_name = str(layer_func).split('.')[-1]  # krijg enum naam
+                except Exception:
+                    pass
+
+                # Layer type (solid vs air gap)
+                layer_type = "solid"
+                if material_name and any(
+                    kw in material_name.lower()
+                    for kw in ["luchtspouw", "air gap", "air space", "cavity", "lucht", "spouw"]
+                ):
+                    layer_type = "air_gap"
+
+                layer_dict = {
+                    "material": material_name,
+                    "thickness_mm": thickness_mm,
+                    "function": function_name,
+                    "type": layer_type
+                }
+                layers.append(layer_dict)
+
+            except Exception:
+                continue
+
+    except Exception:
+        pass
+
+    return layers
 
 
 # =============================================================================
