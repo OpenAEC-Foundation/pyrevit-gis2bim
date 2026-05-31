@@ -47,8 +47,22 @@
   - [ ] **Iconen** voor de twee pushbuttons (nu pyRevit default-icoon).
 - [x] ~~**Shared parameters per grensvlak**~~ (commits `d78a3fe` + `85a2ec3`, 30-05 deel 3) — elk WV_BND-vlak draagt 7 instance-params (groep "Berekeningen", prefix `warmteverlies_`): `ruimte`, `naar_ruimte`, `grenstype`, `orientatie`, `oppervlak_m2`, `host_type`, `type_stapel`. Plus type-param `warmteverlies_afwerklaag` (Yes/No, gebootstrapt uit Type Comments "afwerk").
   - Adjacency **geometrisch** via `GetRoomAtPoint(punt, room-phase)` + naar-buiten-normaal-probe (phase verplicht!). Type-stapel via hergebruik scanner-raycast, afgekapt op min(buurruimte-afstand, eerste luchtspleet), **element-bewust** (voor/achtervlak van 1 element ≠ spleet). Afwerklaag-Types uit de stapel gefilterd. Resultaat op 2786: 147 → **19 distinct per-vlak type-stapels**, isolatie behouden.
-- [x] ~~**UI-polish + bugfixes (31-05)**~~ — openingen krijgen kozijn/deur-Type als type_stapel (was leeg), glaswanden→opening-classificatie, multi-punt wand-stapel-sampling, defaults 0.5/verwarmd-uit.
+- [x] ~~**UI-polish + bugfixes (31-05)**~~ — openingen krijgen kozijn/deur-Type als type_stapel (was leeg), glaswanden→opening-classificatie, multi-punt wand-stapel-sampling, defaults 0.5/verwarmd-uit, air-gap-break conditioneel (volledige dak/wand-opbouw), `oppervlak_m2` 2 decimalen, vliesgevel achter room-separation-line→opening (commits `1a96610`, `7f8c083`, `c0e51f2`, `ddc1892`).
 - [x] ~~**View-behoud-fix (31-05)**~~ — WV-Grensvlak-check 3D view wordt niet meer verwijderd/gerecreëerd bij Tonen, blijft op sheet met template staan.
+- [x] ~~**Schedule "WV - Grensvlakken per ruimte" + WV-3D-view geplaatst op sheet `UO-901` (31-05)**~~ — volledig operationeel.
+
+### Constructie-type-catalogus (Fase 1+2) — open
+
+**Doel:** model-brede tabel met genummerde named typen (`buitenwand1`, `dak1`…) + laag-opbouw-schedule (materiaal·dikte·λ) "selecteerbaar voor de berekening".
+
+- [x] ~~**Blokker #1 — vliesgevel achter room-separation-line → opening**~~ — opgelost in commit `ddc1892` (31-05).
+- [ ] **Blokker #2 — deel-vangst-merge** — korte stapels die prefix/subset zijn van een volledige binnen dezelfde categorie samenvoegen (`160`⊂`160>zinkdak`⊂`160>spie>zinkdak`; `060`⊂`060>PIR>Gevel`; `120`⊂`120>Resol`). Lege stapels apart. **Eerst MCP-prototype tegen 2786, niet blind coderen.** Doel: 29→~6 typen (2 daken·1 buitenwand·2 binnenwanden·openingen apart).
+- [ ] **Fase 2 — laag-opbouw-schedule uit Revit** — `CompoundStructure` van component-types (`type_stapel` heeft alleen namen, geen materiaal/dikte/λ).
+- [ ] **Volgende-sessie stappen:** (1) #2-merge prototypen, (2) named-type als shared param `warmteverlies_constructie` schrijven in `boundary_preview` tijdens render, (3) schedule hergroeperen op die param (1 groep-veld, binnen Revit's 4-limiet), (4) Fase 2 laag-schedule, (5) Fase 3 named typen→JSON-export koppelen.
+
+**Architectuur-noot:** schedule komt uit `boundary_preview` (WV_BND-shapes), NIET uit `thermal_json_builder`. Exporter-#3 (JSON) maakt de schedule dus niet compacter — apart codepad.  
+**Valkuil:** Revit ViewSchedule max 4 sort/group-velden.
+
 - [ ] **Consolidatie 19 → ~5 echte constructies** (volgende stap, hoort in `thermal_json_builder.py` = exporter #3): de per-vlak stapels samenvouwen via een **canonieke fingerprint** — lagen sorteren in vaste richting (binnen→buiten) zodat `060-TL>PIR` en `PIR>060-TL` één worden — plus merge van deel-vangsten (subset/superset met identieke kern). Doel-telling (user, model 2786): 2 daken · 1 buitenwand · 2 binnenwanden · openingen apart. Optioneel tussenstapje: volgorde-canonicalisatie al in `boundary_preview.py::_type_stack_for_face`.
 - **Ontwerpregel (KRITISCH):** preview en export MOETEN dezelfde face-extractie/-filter/-groepering delen (`_get_faces_from_segc` + #3-host-groepering). Aparte implementatie = divergentie = onbetrouwbare check.
 - **Volgorde:** eerst #3 (host-element-groepering) + #5 (vliesgevel → `curtain_wall`) perfectioneren, dán de preview bovenop die gedeelde code — dan toont de preview meteen de gegroepeerde, schone constructies.
