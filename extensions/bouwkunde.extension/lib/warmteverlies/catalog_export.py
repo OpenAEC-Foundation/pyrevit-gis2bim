@@ -307,7 +307,221 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
         })
 
     # ========================================
-    # 3. RESULT
+    # 3. OPENINGS uit WV_BND DirectShapes
+    # ========================================
+    openings = []
+    opening_count = 0
+
+    # Collect orphan openings per room (voor volglas-fallback)
+    orphan_openings_per_room = {}
+
+    # Tweede pass over DirectShapes voor openingen
+    for ds in collector:
+        try:
+            # Check WV_BND prefix
+            comment_param = ds.LookupParameter("Comments")
+            if comment_param is None or not comment_param.HasValue:
+                continue
+            comment_value = comment_param.AsString()
+            if not comment_value or not comment_value.startswith("WV_BND"):
+                continue
+
+            # Check orientation (alleen openingen)
+            orient_param = ds.LookupParameter("warmteverlies_orientatie")
+            if orient_param is None or not orient_param.HasValue:
+                continue
+            orient = orient_param.AsString()
+            if orient != "opening":
+                continue
+
+            # Check constructie naam/type
+            const_param = ds.LookupParameter("warmteverlies_constructie")
+            type_param = ds.LookupParameter("warmteverlies_type_stapel")
+
+            constructie_naam = ""
+            if const_param and const_param.HasValue:
+                constructie_naam = const_param.AsString() or ""
+            if not constructie_naam and type_param and type_param.HasValue:
+                constructie_naam = type_param.AsString() or ""
+            if not constructie_naam:
+                continue
+
+            # room_a
+            ruimte_param = ds.LookupParameter("warmteverlies_ruimte")
+            if ruimte_param is None or not ruimte_param.HasValue:
+                continue
+            ruimte_label = ruimte_param.AsString()
+
+            room_a = room_label_map.get(ruimte_label)
+            if room_a is None:
+                warnings.append("Opening zonder geldige room_a: {0}".format(ruimte_label))
+                continue
+
+            # Geometrie uit bounding box
+            bb = ds.get_BoundingBox(None)
+            if bb is None:
+                continue
+
+            height_mm = (bb.Max.Z - bb.Min.Z) * 304.8
+            width_mm = ((bb.Max.X - bb.Min.X)**2 + (bb.Max.Y - bb.Min.Y)**2)**0.5 * 304.8
+
+            # Sill height (best-effort)
+            sill_height_mm = None
+            try:
+                # Room level elevation
+                room_level_elevation_m = None
+                for room_data in rooms_data:
+                    room_id = room_eid_map.get(room_data.get("element_id", 0))
+                    if room_id == room_a:
+                        room_level_elevation_m = room_data.get("level_elevation_m")
+                        break
+
+                if room_level_elevation_m is not None:
+                    sill_height_mm = max(0.0, (bb.Min.Z * 0.3048 - room_level_elevation_m) * 1000.0)
+            except Exception:
+                pass
+
+            # Azimuth en compass
+            compass = None
+            try:
+                # Bepaal azimuth uit bounding box normaal
+                dx = bb.Max.X - bb.Min.X
+                dy = bb.Max.Y - bb.Min.Y
+                dz = bb.Max.Z - bb.Min.Z
+
+                # De dunne richting is waarschijnlijk de normaal
+                if abs(dx) < abs(dy) and abs(dx) < abs(dz):
+                    # Dun in X, normaal wijst in X richting
+                    azimuth = 90.0 if dx >= 0 else 270.0
+                elif abs(dy) < abs(dx) and abs(dy) < abs(dz):
+                    # Dun in Y, normaal wijst in Y richting
+                    azimuth = 0.0 if dy >= 0 else 180.0
+                else:
+                    # Fallback azimuth
+                    azimuth = 0.0
+
+                compass = _azimuth_to_compass(azimuth % 360.0)
+            except Exception:
+                pass
+
+            # Type bepalen
+            opening_type = "window"  # default
+            constructie_lower = constructie_naam.lower()
+            if "vlies" in constructie_lower or "curtain" in constructie_lower:
+                opening_type = "curtain_wall"
+            elif "deur" in constructie_lower or "door" in constructie_lower:
+                opening_type = "door"
+
+            opening_area_m2 = width_mm * height_mm / 1000000.0
+
+            # Host-construction zoeken
+            host_construction_id = None
+
+            # Kandidaten: echte buitenwanden van zelfde room_a
+            candidates = []
+            for con in constructions:
+                if (con["orientation"] == "wall" and
+                    con["room_b"] == "outside" and
+                    con["room_a"] == room_a and
+                    len(con["layers"]) > 0):
+                    candidates.append(con)
+
+            # Kies beste kandidaat
+            if candidates:
+                # Zoek zelfde compass
+                for con in candidates:
+                    if con["compass"] == compass:
+                        host_construction_id = con["id"]
+                        # Corrigeer bruto area
+                        con["gross_area_m2"] += opening_area_m2
+                        break
+
+                # Geen compass match -> grootste area
+                if host_construction_id is None:
+                    best_con = max(candidates, key=lambda c: c["gross_area_m2"])
+                    host_construction_id = best_con["id"]
+                    best_con["gross_area_m2"] += opening_area_m2
+
+            # Geen host gevonden -> orphan opening
+            if host_construction_id is None:
+                if room_a not in orphan_openings_per_room:
+                    orphan_openings_per_room[room_a] = []
+                orphan_openings_per_room[room_a].append({
+                    "constructie_naam": constructie_naam,
+                    "opening_type": opening_type,
+                    "width_mm": width_mm,
+                    "height_mm": height_mm,
+                    "sill_height_mm": sill_height_mm,
+                    "compass": compass,
+                    "area_m2": opening_area_m2
+                })
+                continue
+
+            # Bouw opening
+            opening_count += 1
+            opening = {
+                "id": "open-{0}".format(opening_count),
+                "construction_id": host_construction_id,
+                "type": opening_type,
+                "width_mm": width_mm,
+                "height_mm": height_mm,
+                "revit_type_name": constructie_naam
+            }
+
+            if sill_height_mm is not None:
+                opening["sill_height_mm"] = sill_height_mm
+
+            openings.append(opening)
+
+        except Exception:
+            # Skip malformed opening shapes
+            continue
+
+    # Maak volglas-fallback constructions voor orphan openings
+    fallback_constructions = 0
+    for room_a, orphan_list in orphan_openings_per_room.items():
+        if not orphan_list:
+            continue
+
+        # Bepaal fallback compass en totale area
+        total_area_m2 = sum(o["area_m2"] for o in orphan_list)
+        largest_opening = max(orphan_list, key=lambda o: o["area_m2"])
+        fallback_compass = largest_opening["compass"]
+
+        # Maak fallback construction
+        construction_count += 1
+        fallback_constructions += 1
+        fallback_con = {
+            "id": "con-{0}".format(construction_count),
+            "room_a": room_a,
+            "room_b": "outside",
+            "orientation": "wall",
+            "compass": fallback_compass,
+            "gross_area_m2": total_area_m2 + 1.0,  # +1m² marge voor net > 0
+            "revit_type_name": "Opening fallback",
+            "layers": []
+        }
+        constructions.append(fallback_con)
+
+        # Koppel alle orphan openings aan deze fallback
+        for orphan in orphan_list:
+            opening_count += 1
+            opening = {
+                "id": "open-{0}".format(opening_count),
+                "construction_id": fallback_con["id"],
+                "type": orphan["opening_type"],
+                "width_mm": orphan["width_mm"],
+                "height_mm": orphan["height_mm"],
+                "revit_type_name": orphan["constructie_naam"]
+            }
+
+            if orphan["sill_height_mm"] is not None:
+                opening["sill_height_mm"] = orphan["sill_height_mm"]
+
+            openings.append(opening)
+
+    # ========================================
+    # 4. RESULT
     # ========================================
     result = {
         "version": "1.0",
@@ -316,13 +530,15 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
         "project_name": project_name,
         "rooms": thermal_rooms,
         "constructions": constructions,
-        "openings": [],  # Fase 3c
+        "openings": openings,
         "open_connections": []
     }
 
-    # Voeg warnings toe voor debugging (niet in schema)
-    if warnings:
-        result["_warnings"] = warnings
+    # Voeg debug info toe (wordt door pushbutton gestript)
+    result["_debug"] = {
+        "warnings": warnings,
+        "fallback_constructions": fallback_constructions
+    }
 
     return result
 

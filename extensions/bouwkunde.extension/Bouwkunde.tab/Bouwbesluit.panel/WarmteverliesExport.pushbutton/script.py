@@ -70,13 +70,19 @@ def run_catalog_export():
     # Rapporteer tellingen
     n_rooms = len(thermal_data.get("rooms", []))
     n_constructions = len(thermal_data.get("constructions", []))
-    warnings = thermal_data.get("_warnings", [])
+    n_openings = len(thermal_data.get("openings", []))
+    debug_info = thermal_data.get("_debug", {})
+    warnings = debug_info.get("warnings", [])
+    n_fallbacks = debug_info.get("fallback_constructions", 0)
 
     output.print_md(
-        "Export data: **{0}** rooms, **{1}** constructies".format(
-            n_rooms, n_constructions
+        "Export data: **{0}** rooms, **{1}** constructies, **{2}** openingen".format(
+            n_rooms, n_constructions, n_openings
         )
     )
+
+    if n_fallbacks > 0:
+        output.print_md("Fallback constructies: **{0}** (openingen zonder host-wand)".format(n_fallbacks))
 
     if warnings:
         output.print_md("**Waarschuwingen:**")
@@ -104,10 +110,10 @@ def run_catalog_export():
 
     # JSON schrijven
     try:
-        # Remove debug warnings from final export
+        # Remove debug info from final export
         export_data = dict(thermal_data)
-        if "_warnings" in export_data:
-            del export_data["_warnings"]
+        if "_debug" in export_data:
+            del export_data["_debug"]
 
         with open(filepath, 'w') as f:
             json.dump(export_data, f, indent=2)
