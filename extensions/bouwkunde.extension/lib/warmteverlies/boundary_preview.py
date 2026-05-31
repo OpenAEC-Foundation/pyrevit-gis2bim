@@ -259,6 +259,55 @@ def _is_glass_wall(doc, element):
     return False
 
 
+# OST_CurtainWallPanels (glas-paneel) en OST_GenericModel (eigen WV-shapes)
+CURTAIN_PANEL_CAT_ID = -2000170
+GENERIC_MODEL_CAT_ID = -2000151
+
+
+def _curtain_glass_behind(doc, intersector, centroid, outward, max_dist_m=0.4):
+    """True als het eerste echte element achter dit vlak een curtain-wall-paneel
+    (glas) is. Detecteert een vliesgevel die NIET de room-bounding host is maar
+    er vlak achter zit — bv. een bewust geplaatste room-separation-line op de
+    gevel met de curtain wall erachter. Negeert eigen WV-shapes (Generic Models)
+    en de IGNORE-categorieen.
+    """
+    if intersector is None or centroid is None or outward is None:
+        return False
+    back = 0.05 * METER_TO_FEET
+    origin = XYZ(
+        centroid.X - outward.X * back,
+        centroid.Y - outward.Y * back,
+        centroid.Z - outward.Z * back,
+    )
+    try:
+        refs = intersector.Find(origin, outward)
+    except Exception:
+        return False
+    if refs is None:
+        return False
+    best_prox = None
+    best_cat = None
+    for rwc in refs:
+        try:
+            prox_m = rwc.Proximity * FEET_TO_M
+            if prox_m > max_dist_m:
+                continue
+            hit = _resolve_hit_element(rwc.GetReference(), doc)
+            if hit is None:
+                continue
+            cat_id = hit.get("category_id")
+            if cat_id in IGNORE_CATEGORIES:
+                continue
+            if cat_id == GENERIC_MODEL_CAT_ID:
+                continue
+            if best_prox is None or prox_m < best_prox:
+                best_prox = prox_m
+                best_cat = cat_id
+        except Exception:
+            continue
+    return best_prox is not None and best_cat == CURTAIN_PANEL_CAT_ID
+
+
 def _build_directshape_from_triangles(doc, triangles, material_id, comment):
     """Bouw een DirectShape uit een lijst driehoeken (elk 3 XYZ).
 
@@ -2061,6 +2110,26 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     )
                 except Exception:
                     stats["type_stack_failed"] += 1
+
+                # Vliesgevel achter een room-separation-line: lege stapel +
+                # curtain-paneel vlak erachter -> dit vlak IS de glas-gevel,
+                # niet een dichte wand. Render als blauwe opening en ga door.
+                if not wall_type_stapel and _curtain_glass_behind(
+                    doc, intersector, w_centroid, w_outward
+                ):
+                    triangles = _face_to_triangles(face)
+                    gds = _build_directshape_from_triangles(
+                        doc, triangles, material_ids[MAT_OPEN[0]],
+                        "{0} {1} vlies".format(COMMENTS_PREFIX, room_number)
+                    )
+                    if gds is not None:
+                        stats["open"] += 1
+                        _set_wv_params(
+                            gds, room_label, "BUITEN", "exterior",
+                            ORIENT_LABEL.get("vliesgevel", "opening"),
+                            wd["area_m2"], wall_host_type, "vliesgevel",
+                        )
+                    continue
 
                 # Horizontale FACE-richting + face s/z-ranges uit outer-loop
                 fdir = _face_direction(normal)
