@@ -106,6 +106,21 @@ def _delete_existing_view(doc, view_name):
             return
 
 
+def _find_view_by_name(doc, view_name):
+    """Vind een bestaande (niet-template) 3D-view met deze naam, of None."""
+    collector = (
+        FilteredElementCollector(doc)
+        .OfClass(View3D)
+        .WhereElementIsNotElementType()
+    )
+    for view in collector:
+        if view.IsTemplate:
+            continue
+        if view.Name == view_name:
+            return view
+    return None
+
+
 def _create_3d_view(doc, view_name):
     """Maak een nieuwe isometrische 3D view aan (Shading, Fine)."""
     vft_collector = FilteredElementCollector(doc).OfClass(ViewFamilyType)
@@ -426,21 +441,26 @@ def _do_render(doc, params):
         )
         return
 
-    # --- View aanmaken ---
-    output.print_md("**Stap 3:** 3D view aanmaken...")
+    # --- View klaarzetten ---
+    output.print_md("**Stap 3:** 3D view klaarzetten...")
     t2 = Transaction(doc, "WV - Grensvlak-check view")
     t2.Start()
     view_3d = None
     try:
-        _delete_existing_view(doc, VIEW_NAME)
-        view_3d = _create_3d_view(doc, VIEW_NAME)
-        _ensure_generic_models_visible(doc, view_3d)
+        view_3d = _find_view_by_name(doc, VIEW_NAME)
+        if view_3d is None:
+            # Eerste keer: nieuwe view + Generic Models zichtbaar maken.
+            view_3d = _create_3d_view(doc, VIEW_NAME)
+            _ensure_generic_models_visible(doc, view_3d)
+        # Bestaat de view al, dan NIET aanraken: respecteer de view-template
+        # (bv. 1/50_warmteverlies) en de plaatsing op een sheet. De WV_BND
+        # shapes zelf zijn al ververst in stap 2; de view toont ze automatisch.
         t2.Commit()
     except Exception as ex:
         if t2.HasStarted() and not t2.HasEnded():
             t2.RollBack()
         forms.alert(
-            "Fout bij aanmaken view:\n{0}".format(str(ex)),
+            "Fout bij klaarzetten view:\n{0}".format(str(ex)),
             title="Fout",
         )
         return

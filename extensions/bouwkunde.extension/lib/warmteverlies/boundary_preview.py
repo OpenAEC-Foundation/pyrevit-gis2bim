@@ -1758,7 +1758,7 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
     try:
         p = ds.LookupParameter("warmteverlies_oppervlak_m2")
         if p is not None and not p.IsReadOnly:
-            p.Set(float(area_m2))
+            p.Set(round(float(area_m2), 2))
     except Exception:
         pass
 
