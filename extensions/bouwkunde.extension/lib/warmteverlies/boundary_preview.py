@@ -1597,8 +1597,12 @@ def _type_stack_for_face(doc, intersector, centroid, outward, cutoff_m=None):
         if el["afwerk"]:
             continue
 
-        # Luchtspleet t.o.v. de vorige STRUCTURELE laag
-        if prev_far is not None:
+        # Luchtspleet t.o.v. de vorige STRUCTURELE laag. De air-gap-break geldt
+        # alleen wanneer er GEEN cutoff bekend is (cutoff_m is None): met een
+        # cutoff_m (buur/exterieur-afstand) bewaakt cutoff_bound de assemblage-
+        # grens al, en is een grote spleet intern (tapse dakspie, ventilatie-
+        # spouw, gevelbekleding op afstand) — die mag de stapel niet afkappen.
+        if prev_far is not None and cutoff_m is None:
             gap = el["near"] - prev_far
             if gap > TYPE_STACK_MAX_AIRGAP_M:
                 break
