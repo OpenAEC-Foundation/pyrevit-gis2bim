@@ -525,7 +525,7 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
     # ========================================
     result = {
         "version": "1.0",
-        "source": "revit-catalog",
+        "source": "revit-raycast",
         "exported_at": exported_at,
         "project_name": project_name,
         "rooms": thermal_rooms,
