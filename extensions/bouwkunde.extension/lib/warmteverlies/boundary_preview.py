@@ -70,6 +70,38 @@ MATERIAL_TRANSPARENCY = 15
 # Horizontaal-drempel voor face-normal Z
 HORIZ_NORMAL_Z = 0.7
 
+
+def _calculate_azimuth(outward_normal):
+    """Bereken kompasrichting in graden uit naar-buiten-normaal.
+
+    Args:
+        outward_normal: XYZ normaal (naar buiten wijzend)
+
+    Returns:
+        float: 0=Noord (+Y), 90=Oost (+X), 180=Zuid (-Y), 270=West (-X).
+               -1 voor horizontale vlakken (|normal.Z| > HORIZ_NORMAL_Z).
+    """
+    if outward_normal is None:
+        return -1.0
+
+    # Horizontale vlakken hebben geen azimuth
+    if abs(outward_normal.Z) > HORIZ_NORMAL_Z:
+        return -1.0
+
+    import math
+    try:
+        # atan2(X, Y) voor 0=Noord (+Y), 90=Oost (+X)
+        azimuth_rad = math.atan2(outward_normal.X, outward_normal.Y)
+        azimuth_deg = math.degrees(azimuth_rad)
+
+        # Normaliseer naar [0, 360)
+        if azimuth_deg < 0:
+            azimuth_deg += 360.0
+
+        return azimuth_deg
+    except Exception:
+        return -1.0
+
 # Opening-offset langs wand-normaal richting ruimtecentrum (mm -> feet)
 OPENING_OFFSET_MM = 20.0
 MM_TO_FEET = 1.0 / 304.8
@@ -127,6 +159,8 @@ WV_PARAM_DEFS = (
     ("warmteverlies_constructie", "text"),
     ("warmteverlies_vangst", "text"),
     ("warmteverlies_lagen", "text"),
+    ("warmteverlies_azimut", "number"),
+    ("warmteverlies_naar_id", "number"),
 )
 
 # orient (intern) -> NL label voor warmteverlies_orientatie
@@ -1454,20 +1488,21 @@ def _resolve_adjacency(doc, room_element, room_eid, face, normal, outer_pts,
         centroid: XYZ face-zwaartepunt (optioneel; anders berekend)
 
     Returns:
-        (grenstype, naar_ruimte_label, cutoff_m)
+        (grenstype, naar_ruimte_label, cutoff_m, naar_id)
             grenstype in {exterior, adjacent_room, unheated_space}
             (ground wordt door de caller bepaald voor vloeren op maaiveld)
             cutoff_m: offset (meter) waarop een ruimte != bron is gevonden
                       (de verre wandzijde); None bij echte buitenlucht zonder
                       gevonden buurruimte. Wordt door de type-stapel-raycast
                       gebruikt om hits voorbij de wand af te kappen.
+            naar_id: element-id (int) van buurruimte, 0 voor exterior/ground
     """
     if centroid is None or outward is None:
         centroid, outward = _outward_normal_at_face(
             doc, room_eid, face, normal, outer_pts, phase
         )
     if centroid is None or outward is None or phase is None:
-        return ("exterior", "BUITEN", None)
+        return ("exterior", "BUITEN", None, 0)
 
     outx, outy, outz = outward.X, outward.Y, outward.Z
 
@@ -1494,18 +1529,18 @@ def _resolve_adjacency(doc, room_element, room_eid, face, normal, outer_pts,
         # offset is wel een geldige cutoff (verre wandzijde).
         nbr_name_norm = nbr_name.strip().lower()
         if any(pat in nbr_name_norm for pat in OUTDOOR_ROOM_NAME_PATTERNS):
-            return ("exterior", "BUITEN", off_m)
+            return ("exterior", "BUITEN", off_m, 0)
 
         adj_label = "{0} {1}".format(
             _get_room_number_safe(nbr),
             nbr_name,
         ).strip()
         if nbr_eid in heated_room_ids:
-            return ("adjacent_room", adj_label, off_m)
-        return ("unheated_space", "ONVERWARMD:" + adj_label, off_m)
+            return ("adjacent_room", adj_label, off_m, nbr_eid)
+        return ("unheated_space", "ONVERWARMD:" + adj_label, off_m, nbr_eid)
 
     # Niets gevonden -> echte buitenlucht, geen buurruimte-afstand beschikbaar
-    return ("exterior", "BUITEN", None)
+    return ("exterior", "BUITEN", None, 0)
 
 
 def _get_room_number_safe(room):
@@ -1886,8 +1921,8 @@ def _create_temp_3d_view(doc):
 
 
 def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
-                   area_m2, host_type, type_stapel="", lagen=""):
-    """Zet de 8 warmteverlies_ parameters op een DirectShape (best-effort).
+                   area_m2, host_type, type_stapel="", lagen="", azimut=-1.0, naar_id=0):
+    """Zet de 10 warmteverlies_ parameters op een DirectShape (best-effort).
 
     Number-param met float, text-params met string. Ontbrekende param wordt
     netjes overgeslagen (geen crash).
@@ -1902,6 +1937,8 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         host_type: str host Type-naam (innerste)
         type_stapel: str geordende type-stapel ("T1 > T2 > ...")
         lagen: str geconcateneerde laagopbouw ("mat1 10 | mat2 20 | ...")
+        azimut: float kompasrichting in graden, -1 voor horizontale vlakken
+        naar_id: int element-id van buurruimte, 0 voor exterior/ground
     """
     if ds is None:
         return
@@ -1927,6 +1964,20 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         p = ds.LookupParameter("warmteverlies_oppervlak_m2")
         if p is not None and not p.IsReadOnly:
             p.Set(round(float(area_m2), 2))
+    except Exception:
+        pass
+
+    try:
+        p = ds.LookupParameter("warmteverlies_azimut")
+        if p is not None and not p.IsReadOnly:
+            p.Set(float(azimut))
+    except Exception:
+        pass
+
+    try:
+        p = ds.LookupParameter("warmteverlies_naar_id")
+        if p is not None and not p.IsReadOnly:
+            p.Set(float(naar_id))
     except Exception:
         pass
 
@@ -2592,7 +2643,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     )
 
                     # --- Adjacency-parameters zetten (geometrische probe) ---
-                    grenstype, naar_ruimte, cutoff_m = _resolve_adjacency(
+                    grenstype, naar_ruimte, cutoff_m, naar_id = _resolve_adjacency(
                         doc, room_element, room_eid, face, normal,
                         f_outer, rooms, heated_room_ids, room_phase,
                         outward=f_outward, centroid=f_centroid,
@@ -2604,6 +2655,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             and room_data.get("level_elevation_m", 0.0) < 0.5):
                         grenstype = "ground"
                         naar_ruimte = "GROND"
+                        naar_id = 0  # Ground heeft geen buurruimte-id
 
                     # --- Type-stapel via raycast (afgekapt op buur-cutoff) ---
                     type_stapel = ""
@@ -2614,6 +2666,9 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     except Exception:
                         stats["type_stack_failed"] += 1
 
+                    # --- Azimuth berekenen ---
+                    azimut = _calculate_azimuth(f_outward)
+
                     _set_wv_params(
                         ds,
                         room_label,
@@ -2623,6 +2678,9 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         area_m2,
                         _innermost_host_type_name(doc, hosts),
                         type_stapel,
+                        "",  # lagen (leeg voor non-wall faces)
+                        azimut,
+                        naar_id,
                     )
             except Exception:
                 stats["faces_failed"] += 1
@@ -2681,7 +2739,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 )
 
                 # Adjacency (geometrische probe) + host-type éénmaal per wandvlak
-                wall_grenstype, wall_naar, wall_cutoff_m = _resolve_adjacency(
+                wall_grenstype, wall_naar, wall_cutoff_m, wall_naar_id = _resolve_adjacency(
                     doc, room_element, room_eid, face, normal, outer_pts,
                     rooms, heated_room_ids, room_phase,
                     outward=w_outward, centroid=w_centroid,
@@ -2715,6 +2773,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             gds, room_label, "BUITEN", "exterior",
                             ORIENT_LABEL.get("vliesgevel", "opening"),
                             wd["area_m2"], wall_host_type, "vliesgevel",
+                            "", _calculate_azimuth(w_outward), 0,
                         )
                     continue
 
@@ -2772,6 +2831,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             ds, room_label, wall_naar, wall_grenstype,
                             ORIENT_LABEL.get("wall", "wand"),
                             wd["area_m2"], wall_host_type, wall_type_stapel,
+                            "", _calculate_azimuth(w_outward), wall_naar_id,
                         )
                     continue
 
@@ -2787,6 +2847,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     ds, room_label, wall_naar, wall_grenstype,
                     ORIENT_LABEL.get("wall", "wand"),
                     netto, wall_host_type, wall_type_stapel,
+                    "", _calculate_azimuth(w_outward), wall_naar_id,
                 )
 
                 # Render gematchte openingen als blauwe rechthoek IN het gat
@@ -2813,6 +2874,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             ORIENT_LABEL.get("open", "opening"),
                             hole_area, wall_host_type,
                             _element_type_name(doc, rect["insert"]),
+                            "", -1.0, 0,  # Openingen: geen azimuth, geen buur-id
                         )
             except Exception:
                 stats["faces_failed"] += 1
@@ -2850,6 +2912,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             rect.get("area_m2", 0.0),
                             _innermost_host_type_name(doc, host_ids),
                             _element_type_name(doc, rect["insert"]),
+                            "", -1.0, 0,  # Openingen: geen azimuth, geen buur-id
                         )
                 except Exception:
                     continue
