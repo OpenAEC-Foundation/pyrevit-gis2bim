@@ -666,7 +666,129 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 openings.append(opening)
 
     # ========================================
-    # 4. RESULT - strip _host_type hints
+    # 4. OPEN CONNECTIONS uit WV_BND DirectShapes
+    # ========================================
+    # Detecteer open verbindingen tussen ruimten (zonder fysieke constructie)
+    open_connections = []
+    open_connection_pairs = {}  # frozenset(room_a, room_b) -> [areas]
+
+    # Derde pass over DirectShapes voor open verbindingen
+    for ds in collector:
+        try:
+            # Check WV_BND prefix
+            comment_param = ds.LookupParameter("Comments")
+            if comment_param is None or not comment_param.HasValue:
+                continue
+            comment_value = comment_param.AsString()
+            if not comment_value or not comment_value.startswith("WV_BND"):
+                continue
+
+            # Check orientation (moet wand zijn)
+            orient_param = ds.LookupParameter("warmteverlies_orientatie")
+            if orient_param is None or not orient_param.HasValue:
+                continue
+            orient = orient_param.AsString()
+            if orient != "wand":
+                continue
+
+            # Check vangst (moet "onbekend" zijn voor open verbinding)
+            vangst_param = ds.LookupParameter("warmteverlies_vangst")
+            if vangst_param is None or not vangst_param.HasValue:
+                continue
+            vangst = vangst_param.AsString()
+            if vangst != "onbekend":
+                continue
+
+            # Check dat constructie leeg is
+            const_param = ds.LookupParameter("warmteverlies_constructie")
+            if const_param and const_param.HasValue:
+                constructie_naam = const_param.AsString()
+                if constructie_naam:  # niet leeg
+                    continue
+
+            # Check grenstype (moet adjacent_room zijn)
+            grens_param = ds.LookupParameter("warmteverlies_grenstype")
+            if grens_param is None or not grens_param.HasValue:
+                continue
+            grenstype = grens_param.AsString()
+            if grenstype != "adjacent_room":
+                continue
+
+            # room_a (bron ruimte)
+            ruimte_param = ds.LookupParameter("warmteverlies_ruimte")
+            if ruimte_param is None or not ruimte_param.HasValue:
+                continue
+            ruimte_label = ruimte_param.AsString()
+
+            room_a = room_label_map.get(ruimte_label)
+            if room_a is None:
+                continue
+
+            # room_b via naar_id (moet numeriek zijn en resolven naar echte ruimte)
+            naar_id_param = ds.LookupParameter("warmteverlies_naar_id")
+            if naar_id_param is None or not naar_id_param.HasValue:
+                continue
+
+            try:
+                naar_id = int(naar_id_param.AsDouble())
+                if naar_id <= 0:
+                    continue
+                room_b = room_eid_map.get(naar_id)
+                if room_b is None:
+                    continue
+
+                # Skip verbindingen naar pseudo-rooms
+                if room_b in ("outside", "ground"):
+                    continue
+
+                # Skip zelfde ruimte
+                if room_a == room_b:
+                    continue
+
+            except Exception:
+                continue
+
+            # area
+            area_m2 = 0.0
+            try:
+                area_param = ds.LookupParameter("warmteverlies_oppervlak_m2")
+                if area_param and area_param.HasValue:
+                    area_m2 = area_param.AsDouble()
+            except Exception:
+                continue
+
+            if area_m2 <= 0.0:
+                continue
+
+            # Voeg toe aan dedup collectie
+            room_pair = frozenset([room_a, room_b])
+            if room_pair not in open_connection_pairs:
+                open_connection_pairs[room_pair] = []
+            open_connection_pairs[room_pair].append(area_m2)
+
+        except Exception:
+            # Skip malformed shapes
+            continue
+
+    # Consolideer per uniek ruimte-paar
+    for room_pair, areas in open_connection_pairs.items():
+        # Bepaal room_a en room_b (deterministisch via sortering)
+        room_list = sorted(list(room_pair))
+        room_a_id = room_list[0]
+        room_b_id = room_list[1]
+
+        # Gemiddelde area
+        avg_area = sum(areas) / len(areas)
+
+        open_connection = {
+            "room_a": room_a_id,
+            "room_b": room_b_id,
+            "area_m2": round(avg_area, 2)
+        }
+        open_connections.append(open_connection)
+
+    # ========================================
+    # 5. RESULT - strip _host_type hints
     # ========================================
     # Strip interne _host_type hints uit constructions voor output
     clean_constructions = []
@@ -684,7 +806,7 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
         "rooms": thermal_rooms,
         "constructions": clean_constructions,
         "openings": openings,
-        "open_connections": []
+        "open_connections": open_connections
     }
 
     # Voeg debug info toe (wordt door pushbutton gestript)
