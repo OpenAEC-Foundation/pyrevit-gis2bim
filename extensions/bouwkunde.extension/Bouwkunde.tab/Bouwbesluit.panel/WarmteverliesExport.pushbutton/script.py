@@ -115,6 +115,9 @@ def run_catalog_export():
         if "_debug" in export_data:
             del export_data["_debug"]
 
+        # IronPython 2.7 serialiseert floats met volle Py2-precisie; forceer 2 decimalen
+        json.encoder.FLOAT_REPR = lambda o: format(o, '.2f')
+
         with open(filepath, 'w') as f:
             json.dump(export_data, f, indent=2)
 
