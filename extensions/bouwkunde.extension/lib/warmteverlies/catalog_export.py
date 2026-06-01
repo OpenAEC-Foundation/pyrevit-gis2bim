@@ -136,6 +136,10 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
 
     for idx, room_data in enumerate(rooms_data):
         try:
+            # Skip buitenruimten (terras, balkon, etc.)
+            if room_data.get("is_outside"):
+                continue
+
             room_id = "room-{0}".format(idx + 1)
 
             # Room properties

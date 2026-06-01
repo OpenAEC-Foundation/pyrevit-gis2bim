@@ -150,11 +150,13 @@ def map_all_rooms(rooms):
         rooms: list[dict] van room data (uit room_collector)
 
     Returns:
-        list[dict]: Dezelfde lijst met ingevulde function en is_heated
+        list[dict]: Dezelfde lijst met ingevulde function, is_heated en is_outside
     """
     for room in rooms:
         name = room.get("name", "")
         room["function"] = map_room_function(name)
-        if is_likely_unheated(name) or is_likely_outside(name):
+        is_outside = is_likely_outside(name)
+        room["is_outside"] = is_outside
+        if is_likely_unheated(name) or is_outside:
             room["is_heated"] = False
     return rooms
