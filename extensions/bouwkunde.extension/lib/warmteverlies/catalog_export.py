@@ -683,28 +683,11 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             if not comment_value or not comment_value.startswith("WV_BND"):
                 continue
 
-            # Check orientation (moet wand zijn)
+            # Check orientation + open verbinding criteria
             orient_param = ds.LookupParameter("warmteverlies_orientatie")
             if orient_param is None or not orient_param.HasValue:
                 continue
             orient = orient_param.AsString()
-            if orient != "wand":
-                continue
-
-            # Check vangst (moet "onbekend" zijn voor open verbinding)
-            vangst_param = ds.LookupParameter("warmteverlies_vangst")
-            if vangst_param is None or not vangst_param.HasValue:
-                continue
-            vangst = vangst_param.AsString()
-            if vangst != "onbekend":
-                continue
-
-            # Check dat constructie leeg is
-            const_param = ds.LookupParameter("warmteverlies_constructie")
-            if const_param and const_param.HasValue:
-                constructie_naam = const_param.AsString()
-                if constructie_naam:  # niet leeg
-                    continue
 
             # Check grenstype (moet adjacent_room zijn)
             grens_param = ds.LookupParameter("warmteverlies_grenstype")
@@ -712,6 +695,29 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 continue
             grenstype = grens_param.AsString()
             if grenstype != "adjacent_room":
+                continue
+
+            # Detecteer open verbinding: nieuwe marker OF legacy criteria
+            is_open_connection = False
+
+            if orient == "openverbinding":
+                # Nieuwe, schone marker
+                is_open_connection = True
+            elif orient == "wand":
+                # Backward-compat voor oude renders: check legacy criteria
+                vangst_param = ds.LookupParameter("warmteverlies_vangst")
+                if vangst_param is not None and vangst_param.HasValue:
+                    vangst = vangst_param.AsString()
+                    if vangst == "onbekend":
+                        # Check dat constructie leeg is
+                        const_param = ds.LookupParameter("warmteverlies_constructie")
+                        constructie_naam = ""
+                        if const_param and const_param.HasValue:
+                            constructie_naam = const_param.AsString()
+                        if not constructie_naam:  # leeg
+                            is_open_connection = True
+
+            if not is_open_connection:
                 continue
 
             # room_a (bron ruimte)

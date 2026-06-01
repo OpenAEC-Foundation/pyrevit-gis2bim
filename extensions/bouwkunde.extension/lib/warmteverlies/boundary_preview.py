@@ -2344,11 +2344,13 @@ def assign_construction_catalog(doc):
             elem_to_lagen[element_id] = ""
 
     # Lege stapels (onbekend)
+    empty_element_ids = set()
     for e in empties:
         for element_id in e["elements"]:
             elem_to_construction[element_id] = ""
             elem_to_vangst[element_id] = "onbekend"
             elem_to_lagen[element_id] = ""
+            empty_element_ids.add(element_id)
 
     # Schrijf terug naar alle elements
     for element_id, element in id_to_element.items():
@@ -2370,6 +2372,14 @@ def assign_construction_catalog(doc):
             if lagen_param is not None and not lagen_param.IsReadOnly:
                 lagen_val = elem_to_lagen.get(element_id, "")
                 lagen_param.Set(lagen_val)
+
+            # Orientatie override voor open verbindingen (lege stapel + adjacent_room)
+            if element_id in empty_element_ids:
+                grens_param = element.LookupParameter("warmteverlies_grenstype")
+                if grens_param is not None and grens_param.HasValue and grens_param.AsString() == "adjacent_room":
+                    orient_param = element.LookupParameter("warmteverlies_orientatie")
+                    if orient_param is not None and not orient_param.IsReadOnly:
+                        orient_param.Set("openverbinding")
         except Exception:
             # Skip elements waar parameter-schrijven faalt
             continue
