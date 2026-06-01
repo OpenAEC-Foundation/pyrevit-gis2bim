@@ -47,6 +47,16 @@ def collect_rooms(doc):
             if elev_param and elev_param.HasValue:
                 level_elev = internal_to_meters(elev_param.AsDouble())
 
+        # Bereken area en volume eerst voor hergebruik
+        area_m2 = internal_to_sqm(room.Area)
+        volume_m3 = internal_to_cubicm(room.Volume)
+
+        # Bepaal height via Volume/Area, fallback op ingevulde waarde
+        if volume_m3 > 0.0 and area_m2 > 0.0:
+            height_m = volume_m3 / area_m2
+        else:
+            height_m = get_room_height(room)
+
         room_data = {
             "element": room,
             "element_id": room.Id.IntegerValue,
@@ -54,9 +64,9 @@ def collect_rooms(doc):
             "number": _get_room_number(room),
             "level_name": level_name,
             "level_elevation_m": level_elev,
-            "floor_area_m2": internal_to_sqm(room.Area),
-            "volume_m3": internal_to_cubicm(room.Volume),
-            "height_m": get_room_height(room),
+            "floor_area_m2": area_m2,
+            "volume_m3": volume_m3,
+            "height_m": height_m,
             "is_heated": True,
             "function": None,
         }
