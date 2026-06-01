@@ -363,6 +363,19 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             "type": "ground"
         })
 
+    # Bouw lookup voor host_type -> exterior wall voor orphan fallback
+    host_type_to_ext_wall = {}
+    for con in constructions:
+        if (con["room_b"] == "outside" and
+            con["orientation"] == "wall" and
+            con.get("_host_type")):
+            host_type = con["_host_type"]
+            if host_type not in host_type_to_ext_wall:
+                host_type_to_ext_wall[host_type] = {
+                    "revit_type_name": con["revit_type_name"],
+                    "layers": con["layers"]
+                }
+
     # ========================================
     # 3. OPENINGS uit WV_BND DirectShapes
     # ========================================
@@ -532,7 +545,8 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                     "height_mm": height_mm,
                     "sill_height_mm": sill_height_mm,
                     "compass": compass,  # dit is nu de echte azimut-compass
-                    "area_m2": opening_area_m2
+                    "area_m2": opening_area_m2,
+                    "host_type": host_type
                 })
                 continue
 
@@ -556,48 +570,100 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             # Skip malformed opening shapes
             continue
 
-    # Maak volglas-fallback constructions voor orphan openings
+    # Maak fallback constructions voor orphan openings
+    # Split per room tussen exterior doors (echte buitenwand) en overige (glas fallback)
     fallback_constructions = 0
     for room_a, orphan_list in orphan_openings_per_room.items():
         if not orphan_list:
             continue
 
-        # Bepaal fallback compass en totale area
-        total_area_m2 = sum(o["area_m2"] for o in orphan_list)
-        largest_opening = max(orphan_list, key=lambda o: o["area_m2"])
-        fallback_compass = largest_opening["compass"]
+        # Groepeer orphans per host_type matchbaarheid
+        exterior_groups = {}  # host_type -> [orphans]
+        other_orphans = []
 
-        # Maak fallback construction
-        construction_count += 1
-        fallback_constructions += 1
-        fallback_con = {
-            "id": "con-{0}".format(construction_count),
-            "room_a": room_a,
-            "room_b": "outside",
-            "orientation": "wall",
-            "compass": fallback_compass,
-            "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge voor net > 0
-            "revit_type_name": "Opening fallback",
-            "layers": []
-        }
-        constructions.append(fallback_con)
-
-        # Koppel alle orphan openings aan deze fallback
         for orphan in orphan_list:
-            opening_count += 1
-            opening = {
-                "id": "open-{0}".format(opening_count),
-                "construction_id": fallback_con["id"],
-                "type": orphan["opening_type"],
-                "width_mm": orphan["width_mm"],
-                "height_mm": orphan["height_mm"],
-                "revit_type_name": orphan["constructie_naam"]
+            host_type = orphan.get("host_type")
+            if host_type and host_type in host_type_to_ext_wall:
+                # Exterior door met bekende host_type
+                if host_type not in exterior_groups:
+                    exterior_groups[host_type] = []
+                exterior_groups[host_type].append(orphan)
+            else:
+                # Overige orphans (vliesgevels, etc.)
+                other_orphans.append(orphan)
+
+        # Maak synthetische buitenwand-constructions voor exterior door groepen
+        for host_type, ext_orphans in exterior_groups.items():
+            total_area_m2 = sum(o["area_m2"] for o in ext_orphans)
+            wall_info = host_type_to_ext_wall[host_type]
+
+            construction_count += 1
+            fallback_constructions += 1
+            ext_wall_con = {
+                "id": "con-{0}".format(construction_count),
+                "room_a": room_a,
+                "room_b": "outside",
+                "orientation": "wall",
+                "compass": None,  # deuren hebben azimut=-1
+                "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge
+                "revit_type_name": wall_info["revit_type_name"],
+                "layers": wall_info["layers"]
             }
+            constructions.append(ext_wall_con)
 
-            if orphan["sill_height_mm"] is not None:
-                opening["sill_height_mm"] = orphan["sill_height_mm"]
+            # Koppel exterior door orphans aan deze buitenwand
+            for orphan in ext_orphans:
+                opening_count += 1
+                opening = {
+                    "id": "open-{0}".format(opening_count),
+                    "construction_id": ext_wall_con["id"],
+                    "type": orphan["opening_type"],
+                    "width_mm": orphan["width_mm"],
+                    "height_mm": orphan["height_mm"],
+                    "revit_type_name": orphan["constructie_naam"]
+                }
 
-            openings.append(opening)
+                if orphan["sill_height_mm"] is not None:
+                    opening["sill_height_mm"] = orphan["sill_height_mm"]
+
+                openings.append(opening)
+
+        # Maak lege glas-fallback voor overige orphans
+        if other_orphans:
+            total_area_m2 = sum(o["area_m2"] for o in other_orphans)
+            largest_opening = max(other_orphans, key=lambda o: o["area_m2"])
+            fallback_compass = largest_opening["compass"]
+
+            construction_count += 1
+            fallback_constructions += 1
+            fallback_con = {
+                "id": "con-{0}".format(construction_count),
+                "room_a": room_a,
+                "room_b": "outside",
+                "orientation": "wall",
+                "compass": fallback_compass,
+                "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge voor net > 0
+                "revit_type_name": "Opening fallback",
+                "layers": []
+            }
+            constructions.append(fallback_con)
+
+            # Koppel overige orphan openings aan deze glas fallback
+            for orphan in other_orphans:
+                opening_count += 1
+                opening = {
+                    "id": "open-{0}".format(opening_count),
+                    "construction_id": fallback_con["id"],
+                    "type": orphan["opening_type"],
+                    "width_mm": orphan["width_mm"],
+                    "height_mm": orphan["height_mm"],
+                    "revit_type_name": orphan["constructie_naam"]
+                }
+
+                if orphan["sill_height_mm"] is not None:
+                    opening["sill_height_mm"] = orphan["sill_height_mm"]
+
+                openings.append(opening)
 
     # ========================================
     # 4. RESULT - strip _host_type hints
