@@ -18,6 +18,7 @@ __doc__ = (
 import os
 import sys
 import json
+import re
 
 from pyrevit import revit, forms, script
 
@@ -115,11 +116,19 @@ def run_catalog_export():
         if "_debug" in export_data:
             del export_data["_debug"]
 
-        # IronPython 2.7 serialiseert floats met volle Py2-precisie; forceer 2 decimalen
-        json.encoder.FLOAT_REPR = lambda o: format(o, '.2f')
+        # IronPython 2.7 kent geen json.encoder.FLOAT_REPR en serialiseert floats
+        # met volle Py2-precisie (9.6999999999999993). Rond daarom op tekst-niveau
+        # af op 2 decimalen: alleen JSON-number-waarden direct na een ':' — strings
+        # zoals "version": "1.0" of materiaalnamen blijven ongemoeid.
+        json_text = json.dumps(export_data, indent=2)
+        json_text = re.sub(
+            r'(:\s*)(-?\d+\.\d+(?:[eE][+-]?\d+)?)',
+            lambda m: m.group(1) + format(float(m.group(2)), '.2f'),
+            json_text
+        )
 
         with open(filepath, 'w') as f:
-            json.dump(export_data, f, indent=2)
+            f.write(json_text)
 
         output.print_md(
             "**Succes!** Export opgeslagen: `{0}`".format(filepath)
