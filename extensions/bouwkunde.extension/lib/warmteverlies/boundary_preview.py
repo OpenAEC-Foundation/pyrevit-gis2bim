@@ -177,6 +177,10 @@ AFWERKLAAG_PARAM_NAME = "warmteverlies_afwerklaag"
 # Type Comments-substring waarop bootstrap een Type als afwerklaag markeert.
 AFWERKLAAG_COMMENT_PATTERN = "afwerk"
 
+# CompoundStructure layer-functies die als afwerklaag genegeerd worden
+# voor warmteverliesberekening (filtering in _extract_layers_from_type)
+AFWERKLAAG_FUNCTIES = ("Finish1", "Finish2", "Membrane")
+
 # Module-flag: parameters al gebonden in deze sessie (idempotent fast-path)
 _wv_params_created = False
 _afwerklaag_param_created = False
@@ -2436,7 +2440,10 @@ def _extract_layers_from_type(doc, type_element, type_name):
                     "function": function_name,
                     "type": layer_type
                 }
-                layers.append(layer_dict)
+
+                # Filter afwerklagen weg voor warmteverliesberekening
+                if function_name not in AFWERKLAAG_FUNCTIES:
+                    layers.append(layer_dict)
 
             except Exception:
                 continue

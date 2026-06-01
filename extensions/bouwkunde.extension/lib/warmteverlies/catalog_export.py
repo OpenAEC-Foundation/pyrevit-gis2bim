@@ -176,9 +176,10 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
     # ========================================
     # 2. CONSTRUCTIONS uit WV_BND DirectShapes
     # ========================================
-    constructions = []
+    # FASE 1: Maak per-face constructions (ruwe lijst)
+    raw_constructions = []
     warnings = []
-    construction_count = 0
+    raw_construction_count = 0
 
     # Collect DirectShapes
     collector = (
@@ -289,10 +290,9 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             except Exception:
                 pass
 
-            # Construction object
-            construction_count += 1
+            # Raw construction object (per face)
+            raw_construction_count += 1
             construction = {
-                "id": "con-{0}".format(construction_count),
                 "room_a": room_a,
                 "room_b": room_b,
                 "orientation": orientation,
@@ -302,11 +302,54 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 "layers": layers,
                 "_host_type": host_type  # interne hint
             }
-            constructions.append(construction)
+            raw_constructions.append(construction)
 
         except Exception:
             # Skip malformed shapes
             continue
+
+    # FASE 2: Consolideer constructions per groep
+    # Groepeer op (room_a, room_b, orientation, compass, revit_type_name)
+    construction_groups = {}
+
+    for raw_con in raw_constructions:
+        group_key = (
+            raw_con["room_a"],
+            raw_con["room_b"],
+            raw_con["orientation"],
+            raw_con["compass"],
+            raw_con["revit_type_name"]
+        )
+
+        if group_key not in construction_groups:
+            construction_groups[group_key] = []
+        construction_groups[group_key].append(raw_con)
+
+    # Bouw geconsolideerde constructions lijst
+    constructions = []
+    construction_count = 0
+
+    for group_key, group_constructions in construction_groups.items():
+        construction_count += 1
+
+        # Sommeer areas
+        total_area = sum(con["gross_area_m2"] for con in group_constructions)
+
+        # Neem eerste element voor gemeenschappelijke velden
+        first_con = group_constructions[0]
+
+        consolidated_con = {
+            "id": "con-{0}".format(construction_count),
+            "room_a": first_con["room_a"],
+            "room_b": first_con["room_b"],
+            "orientation": first_con["orientation"],
+            "compass": first_con["compass"],
+            "gross_area_m2": round(total_area, 2),
+            "revit_type_name": first_con["revit_type_name"],
+            "layers": first_con["layers"],  # Binnen zelfde type identiek
+            "_host_type": first_con["_host_type"]  # interne hint
+        }
+        constructions.append(consolidated_con)
 
     # Voeg ground pseudo-room toe indien nodig
     if has_ground:
