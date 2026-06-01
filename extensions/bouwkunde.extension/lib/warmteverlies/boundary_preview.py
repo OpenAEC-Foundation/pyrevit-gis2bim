@@ -40,6 +40,7 @@ from Autodesk.Revit.DB import (
     View3D,
     ViewFamilyType,
     ViewFamily,
+    BuiltInParameter,
 )
 
 from warmteverlies.unit_utils import internal_to_sqm
@@ -69,6 +70,68 @@ MATERIAL_TRANSPARENCY = 15
 
 # Horizontaal-drempel voor face-normal Z
 HORIZ_NORMAL_Z = 0.7
+
+# Target workset naam voor WV_BND DirectShapes
+TARGET_WORKSET_NAME = "massa_rooms_model"
+
+
+# =============================================================================
+# Workset helpers (workshared models)
+# =============================================================================
+def _find_workset_by_name(doc, name):
+    """Zoek een workset ID op basis van naam in een workshared model.
+
+    Args:
+        doc: Revit Document
+        name: string workset naam
+
+    Returns:
+        int (Workset.Id.IntegerValue), of None bij niet gevonden / niet
+        workshared.
+    """
+    if not name:
+        return None
+    try:
+        from Autodesk.Revit.DB import (
+            FilteredWorksetCollector, WorksetKind,
+        )
+    except Exception:
+        return None
+    try:
+        wsc = FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+    except Exception:
+        return None
+    for ws in wsc:
+        try:
+            if ws.Name == name:
+                return int(ws.Id.IntegerValue)
+        except Exception:
+            continue
+    return None
+
+
+def _set_directshape_workset(ds, workset_id_int):
+    """Zet de workset van een DirectShape via ELEM_PARTITION_PARAM.
+
+    Args:
+        ds: DirectShape element
+        workset_id_int: int workset ID, of None (dan geen actie)
+
+    Returns:
+        bool: True als succesvol gezet, False anders
+    """
+    if workset_id_int is None:
+        return False
+    try:
+        p = ds.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+        if p is None:
+            return False
+        if p.IsReadOnly:
+            return False
+        p.Set(int(workset_id_int))
+        return True
+    except Exception:
+        return False
 
 
 def _calculate_azimuth(outward_normal):
@@ -440,7 +503,7 @@ def _curtain_glass_behind_sampled(doc, intersector, face, outward, max_dist_m=0.
     return curtain_hits > (total_hits / 2.0)
 
 
-def _build_directshape_from_triangles(doc, triangles, material_id, comment):
+def _build_directshape_from_triangles(doc, triangles, material_id, comment, workset_id=None):
     """Bouw een DirectShape uit een lijst driehoeken (elk 3 XYZ).
 
     Args:
@@ -448,6 +511,7 @@ def _build_directshape_from_triangles(doc, triangles, material_id, comment):
         triangles: list van (v0, v1, v2) XYZ-tuples
         material_id: ElementId van het materiaal
         comment: string voor de Comments-parameter (WV_BND prefix)
+        workset_id: int workset ID (optional), voor workshared models
 
     Returns:
         DirectShape of None
@@ -490,6 +554,11 @@ def _build_directshape_from_triangles(doc, triangles, material_id, comment):
             comment_param.Set(comment)
     except Exception:
         pass
+
+    # Zet workset (workshared models)
+    if workset_id is not None:
+        _set_directshape_workset(ds, workset_id)
+
     return ds
 
 
@@ -569,7 +638,7 @@ def _project_on_plane(p, origin, normal):
 
 
 def _build_directshape_face_with_holes(
-    doc, outer_pts, holes_corners, material_id, normal, comment
+    doc, outer_pts, holes_corners, material_id, normal, comment, workset_id=None
 ):
     """Bouw een DirectShape: één face met gaten via multi-loop TessellatedFace.
 
@@ -580,6 +649,7 @@ def _build_directshape_face_with_holes(
         material_id: ElementId van het wand-materiaal
         normal: XYZ face-normal (voor winding-bepaling)
         comment: string voor Comments-parameter
+        workset_id: int workset ID (optional), voor workshared models
 
     Returns:
         DirectShape of None (None => caller moet fallback renderen)
@@ -633,6 +703,11 @@ def _build_directshape_face_with_holes(
             comment_param.Set(comment)
     except Exception:
         pass
+
+    # Zet workset (workshared models)
+    if workset_id is not None:
+        _set_directshape_workset(ds, workset_id)
+
     return ds
 
 
@@ -2511,6 +2586,23 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
     ensure_afwerklaag_parameter(doc)
     bootstrap_afwerklaag_from_comments(doc)
 
+    # --- Workset resolutie (workshared models) ---
+    target_workset_id = None
+    if doc.IsWorkshared:
+        target_workset_id = _find_workset_by_name(doc, TARGET_WORKSET_NAME)
+        if output is not None:
+            if target_workset_id is not None:
+                output.print_md(
+                    "DirectShapes → workset **{0}** (ID: {1})".format(
+                        TARGET_WORKSET_NAME, target_workset_id
+                    )
+                )
+            else:
+                output.print_md(
+                    "*Waarschuwing: workset '{0}' niet gevonden, "
+                    "shapes gaan naar active workset*".format(TARGET_WORKSET_NAME)
+                )
+
     # --- Verwarmde-ruimte set (zelfde predicate als heated_only-filter) ---
     heated_room_ids = set(
         rd["element_id"] for rd in rooms if rd.get("is_heated")
@@ -2639,7 +2731,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     COMMENTS_PREFIX, room_number, orient
                 )
                 ds = _build_directshape_from_triangles(
-                    doc, triangles, material_ids[mat_name], comment
+                    doc, triangles, material_ids[mat_name], comment, workset_id=target_workset_id
                 )
                 if ds is not None:
                     if orient == "top":
@@ -2779,7 +2871,8 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     triangles = _face_to_triangles(face)
                     gds = _build_directshape_from_triangles(
                         doc, triangles, material_ids[MAT_OPEN[0]],
-                        "{0} {1} vlies".format(COMMENTS_PREFIX, room_number)
+                        "{0} {1} vlies".format(COMMENTS_PREFIX, room_number),
+                        workset_id=target_workset_id
                     )
                     if gds is not None:
                         stats["open"] += 1
@@ -2828,14 +2921,14 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 if outer_pts and holes:
                     ds = _build_directshape_face_with_holes(
                         doc, outer_pts, holes,
-                        material_ids[MAT_WALL[0]], normal, comment
+                        material_ids[MAT_WALL[0]], normal, comment, workset_id=target_workset_id
                     )
 
                 if ds is None:
                     # Fallback: volle gele wand zonder gat (altijd zichtbaar)
                     triangles = _face_to_triangles(face)
                     ds = _build_directshape_from_triangles(
-                        doc, triangles, material_ids[MAT_WALL[0]], comment
+                        doc, triangles, material_ids[MAT_WALL[0]], comment, workset_id=target_workset_id
                     )
                     # Geen gaten gesneden -> bruto area, geen netto-aftrek
                     if ds is not None:
@@ -2877,7 +2970,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         COMMENTS_PREFIX, room_number
                     )
                     ods = _build_directshape_from_triangles(
-                        doc, tris, material_ids[MAT_OPEN[0]], open_comment
+                        doc, tris, material_ids[MAT_OPEN[0]], open_comment, workset_id=target_workset_id
                     )
                     if ods is not None:
                         rendered_openings.add(ins_key)
@@ -2911,7 +3004,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         COMMENTS_PREFIX, room_number
                     )
                     ods = _build_directshape_from_triangles(
-                        doc, tris, material_ids[MAT_OPEN[0]], comment
+                        doc, tris, material_ids[MAT_OPEN[0]], comment, workset_id=target_workset_id
                     )
                     if ods is not None:
                         rendered_openings.add(ins_key)
