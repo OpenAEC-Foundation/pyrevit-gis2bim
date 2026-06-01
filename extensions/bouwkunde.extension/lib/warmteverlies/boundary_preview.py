@@ -94,11 +94,8 @@ def _calculate_azimuth(outward_normal):
         azimuth_rad = math.atan2(outward_normal.X, outward_normal.Y)
         azimuth_deg = math.degrees(azimuth_rad)
 
-        # Normaliseer naar [0, 360)
-        if azimuth_deg < 0:
-            azimuth_deg += 360.0
-
-        return azimuth_deg
+        # Normaliseer naar [0, 360) - schone modulo
+        return azimuth_deg % 360.0
     except Exception:
         return -1.0
 

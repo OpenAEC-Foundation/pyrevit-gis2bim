@@ -82,7 +82,7 @@ def _parse_layers_string(layers_string):
 
             layers.append({
                 "material": material,
-                "thickness_mm": thickness_mm,
+                "thickness_mm": round(thickness_mm, 2),
                 "type": layer_type
             })
 
@@ -158,9 +158,9 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 "name": name,
                 "type": "heated" if is_heated else "unheated",
                 "level": level_name,
-                "area_m2": area_m2,
-                "height_m": height_m,
-                "volume_m3": volume_m3
+                "area_m2": round(area_m2, 2),
+                "height_m": round(height_m, 2),
+                "volume_m3": round(volume_m3, 2)
             }
             thermal_rooms.append(thermal_room)
 
@@ -280,6 +280,15 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             except Exception:
                 pass
 
+            # host_type voor wand-constructies
+            host_type = None
+            try:
+                host_type_param = ds.LookupParameter("warmteverlies_host_type")
+                if host_type_param and host_type_param.HasValue:
+                    host_type = host_type_param.AsString()
+            except Exception:
+                pass
+
             # Construction object
             construction_count += 1
             construction = {
@@ -288,9 +297,10 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 "room_b": room_b,
                 "orientation": orientation,
                 "compass": compass,
-                "gross_area_m2": area_m2,
+                "gross_area_m2": round(area_m2, 2),
                 "revit_type_name": constructie_naam,
-                "layers": layers
+                "layers": layers,
+                "_host_type": host_type  # interne hint
             }
             constructions.append(construction)
 
@@ -362,8 +372,8 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             if bb is None:
                 continue
 
-            height_mm = (bb.Max.Z - bb.Min.Z) * 304.8
-            width_mm = ((bb.Max.X - bb.Min.X)**2 + (bb.Max.Y - bb.Min.Y)**2)**0.5 * 304.8
+            height_mm = round((bb.Max.Z - bb.Min.Z) * 304.8, 2)
+            width_mm = round(((bb.Max.X - bb.Min.X)**2 + (bb.Max.Y - bb.Min.Y)**2)**0.5 * 304.8, 2)
 
             # Sill height (best-effort)
             sill_height_mm = None
@@ -377,32 +387,44 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                         break
 
                 if room_level_elevation_m is not None:
-                    sill_height_mm = max(0.0, (bb.Min.Z * 0.3048 - room_level_elevation_m) * 1000.0)
+                    sill_height_mm = round(max(0.0, (bb.Min.Z * 0.3048 - room_level_elevation_m) * 1000.0), 2)
             except Exception:
                 pass
 
-            # Azimuth en compass
+            # Lees echte params: azimut, area, host_type
+            opening_azimut = None
+            opening_area_m2 = 0.0
+            host_type = None
             compass = None
+
             try:
-                # Bepaal azimuth uit bounding box normaal
-                dx = bb.Max.X - bb.Min.X
-                dy = bb.Max.Y - bb.Min.Y
-                dz = bb.Max.Z - bb.Min.Z
+                # warmteverlies_azimut
+                azimut_param = ds.LookupParameter("warmteverlies_azimut")
+                if azimut_param and azimut_param.HasValue:
+                    opening_azimut = azimut_param.AsDouble()
 
-                # De dunne richting is waarschijnlijk de normaal
-                if abs(dx) < abs(dy) and abs(dx) < abs(dz):
-                    # Dun in X, normaal wijst in X richting
-                    azimuth = 90.0 if dx >= 0 else 270.0
-                elif abs(dy) < abs(dx) and abs(dy) < abs(dz):
-                    # Dun in Y, normaal wijst in Y richting
-                    azimuth = 0.0 if dy >= 0 else 180.0
-                else:
-                    # Fallback azimuth
-                    azimuth = 0.0
+                # warmteverlies_oppervlak_m2
+                area_param = ds.LookupParameter("warmteverlies_oppervlak_m2")
+                if area_param and area_param.HasValue:
+                    opening_area_m2 = area_param.AsDouble()
 
-                compass = _azimuth_to_compass(azimuth % 360.0)
+                # warmteverlies_host_type
+                host_param = ds.LookupParameter("warmteverlies_host_type")
+                if host_param and host_param.HasValue:
+                    host_type = host_param.AsString()
             except Exception:
                 pass
+
+            # Area fallback naar bbox als param ontbreekt/0
+            if opening_area_m2 <= 0.0:
+                opening_area_m2 = width_mm * height_mm / 1000000.0
+
+            # Rond af
+            opening_area_m2 = round(opening_area_m2, 2)
+
+            # Compass bepalen
+            if opening_azimut is not None and opening_azimut >= 0:
+                compass = _azimuth_to_compass(opening_azimut % 360.0)
 
             # Type bepalen
             opening_type = "window"  # default
@@ -412,9 +434,7 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             elif "deur" in constructie_lower or "door" in constructie_lower:
                 opening_type = "door"
 
-            opening_area_m2 = width_mm * height_mm / 1000000.0
-
-            # Host-construction zoeken
+            # Host-construction zoeken met herziene matching
             host_construction_id = None
 
             # Kandidaten: echte buitenwanden van zelfde room_a
@@ -426,21 +446,33 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                     len(con["layers"]) > 0):
                     candidates.append(con)
 
-            # Kies beste kandidaat
+            # Stap 1 — exacte koppeling
             if candidates:
-                # Zoek zelfde compass
-                for con in candidates:
-                    if con["compass"] == compass:
-                        host_construction_id = con["id"]
-                        # Corrigeer bruto area
-                        con["gross_area_m2"] += opening_area_m2
-                        break
+                if compass is not None:
+                    # Opening heeft geldige compass → match op compass
+                    for con in candidates:
+                        if con["compass"] == compass:
+                            host_construction_id = con["id"]
+                            con["gross_area_m2"] = round(con["gross_area_m2"] + opening_area_m2, 2)
+                            break
+                elif host_type:
+                    # Opening azimut=-1 (deur) → match op host_type
+                    matching_hosts = []
+                    for con in candidates:
+                        if con.get("_host_type") == host_type:
+                            matching_hosts.append(con)
 
-                # Geen compass match -> grootste area
-                if host_construction_id is None:
+                    if matching_hosts:
+                        # Meerdere host_type matches → kies grootste area
+                        best_con = max(matching_hosts, key=lambda c: c["gross_area_m2"])
+                        host_construction_id = best_con["id"]
+                        best_con["gross_area_m2"] = round(best_con["gross_area_m2"] + opening_area_m2, 2)
+
+                # Stap 2 — fallback binnen kandidaten
+                if host_construction_id is None and candidates:
                     best_con = max(candidates, key=lambda c: c["gross_area_m2"])
                     host_construction_id = best_con["id"]
-                    best_con["gross_area_m2"] += opening_area_m2
+                    best_con["gross_area_m2"] = round(best_con["gross_area_m2"] + opening_area_m2, 2)
 
             # Geen host gevonden -> orphan opening
             if host_construction_id is None:
@@ -452,7 +484,7 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                     "width_mm": width_mm,
                     "height_mm": height_mm,
                     "sill_height_mm": sill_height_mm,
-                    "compass": compass,
+                    "compass": compass,  # dit is nu de echte azimut-compass
                     "area_m2": opening_area_m2
                 })
                 continue
@@ -497,7 +529,7 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             "room_b": "outside",
             "orientation": "wall",
             "compass": fallback_compass,
-            "gross_area_m2": total_area_m2 + 1.0,  # +1m² marge voor net > 0
+            "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge voor net > 0
             "revit_type_name": "Opening fallback",
             "layers": []
         }
@@ -521,15 +553,23 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             openings.append(opening)
 
     # ========================================
-    # 4. RESULT
+    # 4. RESULT - strip _host_type hints
     # ========================================
+    # Strip interne _host_type hints uit constructions voor output
+    clean_constructions = []
+    for con in constructions:
+        clean_con = dict(con)  # shallow copy
+        if "_host_type" in clean_con:
+            del clean_con["_host_type"]
+        clean_constructions.append(clean_con)
+
     result = {
         "version": "1.0",
         "source": "revit-raycast",
         "exported_at": exported_at,
         "project_name": project_name,
         "rooms": thermal_rooms,
-        "constructions": constructions,
+        "constructions": clean_constructions,
         "openings": openings,
         "open_connections": []
     }
