@@ -2882,13 +2882,13 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     if ods is not None:
                         rendered_openings.add(ins_key)
                         stats["openings"] += 1
-                        # Opening grenst altijd aan buiten (deur/raam in wand)
+                        # Opening erft adjacency van host-wand (kan binnendeuren zijn)
                         _set_wv_params(
-                            ods, room_label, "BUITEN", "exterior",
+                            ods, room_label, wall_naar, wall_grenstype,
                             ORIENT_LABEL.get("open", "opening"),
                             hole_area, wall_host_type,
                             _element_type_name(doc, rect["insert"]),
-                            "", -1.0, 0,  # Openingen: geen azimuth, geen buur-id
+                            "", -1.0, wall_naar_id,  # Geen azimuth, wel buur-id van host-wand
                         )
             except Exception:
                 stats["faces_failed"] += 1
@@ -2920,6 +2920,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         wid = rect.get("host_wall_id")
                         if wid is not None:
                             host_ids.append(wid)
+                        # Fallback: geen face-match, host-adjacency onbekend -> exterior
                         _set_wv_params(
                             ods, room_label, "BUITEN", "exterior",
                             ORIENT_LABEL.get("open", "opening"),

@@ -451,11 +451,13 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             except Exception:
                 pass
 
-            # Lees echte params: azimut, area, host_type
+            # Lees echte params: azimut, area, host_type, grenstype, naar_id
             opening_azimut = None
             opening_area_m2 = 0.0
             host_type = None
             compass = None
+            grenstype = None
+            naar_id = 0
 
             try:
                 # warmteverlies_azimut
@@ -472,6 +474,16 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 host_param = ds.LookupParameter("warmteverlies_host_type")
                 if host_param and host_param.HasValue:
                     host_type = host_param.AsString()
+
+                # warmteverlies_grenstype
+                grenstype_param = ds.LookupParameter("warmteverlies_grenstype")
+                if grenstype_param and grenstype_param.HasValue:
+                    grenstype = grenstype_param.AsString()
+
+                # warmteverlies_naar_id
+                naar_id_param = ds.LookupParameter("warmteverlies_naar_id")
+                if naar_id_param and naar_id_param.HasValue:
+                    naar_id = int(naar_id_param.AsDouble())
             except Exception:
                 pass
 
@@ -494,14 +506,28 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             elif "deur" in constructie_lower or "door" in constructie_lower:
                 opening_type = "door"
 
+            # Bepaal opening's room_b op basis van grenstype en naar_id
+            opening_room_b = "outside"  # default
+            if grenstype == "adjacent_room" and naar_id > 0:
+                opening_room_b = room_eid_map.get(naar_id)
+                if opening_room_b is None:
+                    opening_room_b = "outside"  # fallback als buurruimte niet gevonden
+            elif grenstype == "unheated_space" and naar_id > 0:
+                opening_room_b = room_eid_map.get(naar_id)
+                if opening_room_b is None:
+                    opening_room_b = "outside"  # fallback
+            elif grenstype == "ground":
+                opening_room_b = "ground"
+            # anders blijft "outside" voor exterior/onbekend
+
             # Host-construction zoeken met herziene matching
             host_construction_id = None
 
-            # Kandidaten: echte buitenwanden van zelfde room_a
+            # Kandidaten: wanden van zelfde room_a met matchende room_b
             candidates = []
             for con in constructions:
                 if (con["orientation"] == "wall" and
-                    con["room_b"] == "outside" and
+                    con["room_b"] == opening_room_b and
                     con["room_a"] == room_a and
                     len(con["layers"]) > 0):
                     candidates.append(con)
@@ -546,7 +572,9 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                     "sill_height_mm": sill_height_mm,
                     "compass": compass,  # dit is nu de echte azimut-compass
                     "area_m2": opening_area_m2,
-                    "host_type": host_type
+                    "host_type": host_type,
+                    "room_b": opening_room_b,  # geef de juiste room_b door
+                    "grenstype": grenstype
                 })
                 continue
 
@@ -571,85 +599,71 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             continue
 
     # Maak fallback constructions voor orphan openings
-    # Split per room tussen exterior doors (echte buitenwand) en overige (glas fallback)
+    # Groepeer per room_a en per room_b
     fallback_constructions = 0
     for room_a, orphan_list in orphan_openings_per_room.items():
         if not orphan_list:
             continue
 
-        # Groepeer orphans per host_type matchbaarheid
-        exterior_groups = {}  # host_type -> [orphans]
-        other_orphans = []
+        # Groepeer orphans per (room_b, host_type) combinatie
+        groups = {}  # (room_b, host_type) -> [orphans]
 
         for orphan in orphan_list:
+            room_b = orphan.get("room_b", "outside")
             host_type = orphan.get("host_type")
-            if host_type and host_type in host_type_to_ext_wall:
-                # Exterior door met bekende host_type
-                if host_type not in exterior_groups:
-                    exterior_groups[host_type] = []
-                exterior_groups[host_type].append(orphan)
+            grenstype = orphan.get("grenstype")
+
+            # Voor exterior: alleen als host_type bekend is in ext_wall mapping
+            if room_b == "outside" and host_type and host_type in host_type_to_ext_wall:
+                key = (room_b, host_type)
             else:
-                # Overige orphans (vliesgevels, etc.)
-                other_orphans.append(orphan)
+                # Voor interior/overige: groepeer op room_b, gebruik host_type indien beschikbaar
+                key = (room_b, host_type if host_type else None)
 
-        # Maak synthetische buitenwand-constructions voor exterior door groepen
-        for host_type, ext_orphans in exterior_groups.items():
-            total_area_m2 = sum(o["area_m2"] for o in ext_orphans)
-            wall_info = host_type_to_ext_wall[host_type]
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(orphan)
 
-            construction_count += 1
-            fallback_constructions += 1
-            ext_wall_con = {
-                "id": "con-{0}".format(construction_count),
-                "room_a": room_a,
-                "room_b": "outside",
-                "orientation": "wall",
-                "compass": None,  # deuren hebben azimut=-1
-                "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge
-                "revit_type_name": wall_info["revit_type_name"],
-                "layers": wall_info["layers"]
-            }
-            constructions.append(ext_wall_con)
-
-            # Koppel exterior door orphans aan deze buitenwand
-            for orphan in ext_orphans:
-                opening_count += 1
-                opening = {
-                    "id": "open-{0}".format(opening_count),
-                    "construction_id": ext_wall_con["id"],
-                    "type": orphan["opening_type"],
-                    "width_mm": orphan["width_mm"],
-                    "height_mm": orphan["height_mm"],
-                    "revit_type_name": orphan["constructie_naam"]
-                }
-
-                if orphan["sill_height_mm"] is not None:
-                    opening["sill_height_mm"] = orphan["sill_height_mm"]
-
-                openings.append(opening)
-
-        # Maak lege glas-fallback voor overige orphans
-        if other_orphans:
-            total_area_m2 = sum(o["area_m2"] for o in other_orphans)
-            largest_opening = max(other_orphans, key=lambda o: o["area_m2"])
-            fallback_compass = largest_opening["compass"]
+        # Maak fallback constructie per groep
+        for (room_b, host_type), group_orphans in groups.items():
+            total_area_m2 = sum(o["area_m2"] for o in group_orphans)
 
             construction_count += 1
             fallback_constructions += 1
+
+            # Bepaal constructie eigenschappen
+            if room_b == "outside" and host_type and host_type in host_type_to_ext_wall:
+                # Exterior wand met bekende host_type
+                wall_info = host_type_to_ext_wall[host_type]
+                revit_type_name = wall_info["revit_type_name"]
+                layers = wall_info["layers"]
+                compass = None  # deuren hebben azimut=-1
+            else:
+                # Interior/onbekende wand
+                if host_type:
+                    revit_type_name = host_type + " fallback"
+                    layers = []  # gebruik host_type lagen indien later uitgebreid
+                else:
+                    revit_type_name = "Opening fallback"
+                    layers = []
+                # Gebruik compass van grootste opening als beschikbaar
+                largest_opening = max(group_orphans, key=lambda o: o["area_m2"])
+                compass = largest_opening.get("compass")
+
             fallback_con = {
                 "id": "con-{0}".format(construction_count),
                 "room_a": room_a,
-                "room_b": "outside",
+                "room_b": room_b,
                 "orientation": "wall",
-                "compass": fallback_compass,
-                "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge voor net > 0
-                "revit_type_name": "Opening fallback",
-                "layers": []
+                "compass": compass,
+                "gross_area_m2": round(total_area_m2 + 1.0, 2),  # +1m² marge
+                "revit_type_name": revit_type_name,
+                "layers": layers
             }
             constructions.append(fallback_con)
 
-            # Koppel overige orphan openings aan deze glas fallback
-            for orphan in other_orphans:
+            # Koppel alle orphans uit deze groep aan de fallback constructie
+            for orphan in group_orphans:
                 opening_count += 1
                 opening = {
                     "id": "open-{0}".format(opening_count),
