@@ -23,7 +23,6 @@ __doc__ = "Genereer aanzichten + plattegrond + plafond van een ruimte op sheet"
 
 import os
 import sys
-import math
 import datetime
 import traceback as _tb_mod
 
@@ -553,22 +552,40 @@ def _create_wall_elevation(
     seg_mid_x = (p0.X + p1.X) / 2.0
     seg_mid_y = (p0.Y + p1.Y) / 2.0
 
-    # View direction in XY: room_center -> wall midpoint
-    dx = seg_mid_x - room_center.X
-    dy = seg_mid_y - room_center.Y
-    dist = math.sqrt(dx * dx + dy * dy)
-    if dist < 1e-6:
-        _log("wand midden valt samen met room center; skip")
-        return None
-    vd_x = dx / dist
-    vd_y = dy / dist
+    # View direction = wand-NORMAAL (loodrecht op het segment), niet
+    # room_center -> wand-midden. Bij onregelmatige plattegronden kijkt
+    # de camera zo zuiver orthografisch op de wand i.p.v. schuin.
+    #   wand-tangent t = (p1 - p0) genormaliseerd in XY
+    #   normaal n = (-t.Y, t.X)
+    #   teken zo gekozen dat n vanuit het interieur naar buiten wijst,
+    #   d.w.z. dezelfde kant op als (wand-midden - room_center).
+    tx = (p1.X - p0.X) / seg_len
+    ty = (p1.Y - p0.Y) / seg_len
+    nx = -ty
+    ny = tx
+    out_x = seg_mid_x - room_center.X
+    out_y = seg_mid_y - room_center.Y
+    if (nx * out_x + ny * out_y) < 0.0:
+        nx = -nx
+        ny = -ny
+    vd_x = nx
+    vd_y = ny
 
-    # Section box frame:
-    #   BasisZ = -view_dir  (uit view, naar camera)
+    # Loodrechte afstand camera (room_center) -> wandvlak, langs view_dir.
+    # Dit is de scene-diepte; wand ligt op view-local Z = +dist.
+    dist = out_x * vd_x + out_y * vd_y
+    if dist < 1e-6:
+        _log("wand valt (bijna) samen met room center; skip")
+        return None
+
+    # Section box frame.
+    # LET OP: Revit kijkt langs +BasisZ (de kijkrichting IS BasisZ, niet
+    # het negatief ervan). Dus BasisZ = view_dir (naar buiten, naar de
+    # wand) zodat de camera vanuit de ruimte naar buiten kijkt.
+    #   BasisZ = view_dir   (kijkrichting, naar de wand)
     #   BasisY = +world Z   (up)
-    #   BasisX = BasisY x BasisZ = (-vd.Y, vd.X, 0)  (view-rechts, 90° CCW
-    #                                                  van view_dir in XY)
-    basis_z = XYZ(-vd_x, -vd_y, 0.0)
+    #   BasisX = BasisY x BasisZ = (-vd.Y, vd.X, 0)  (rechtshandig frame)
+    basis_z = XYZ(vd_x, vd_y, 0.0)
     basis_y = XYZ(0.0, 0.0, 1.0)
     basis_x = XYZ(-vd_y, vd_x, 0.0)
 
@@ -586,10 +603,10 @@ def _create_wall_elevation(
     y_min = -WALL_MARGIN_FT
     y_max = wall_h + WALL_MARGIN_FT
 
-    # Z: depth — far (in scene, voorbij wand) tot iets achter camera.
-    # Wand bevindt zich op view-local Z = -dist (negatief, in scene).
-    z_min = -(dist + WALL_MARGIN_FT + 3.0)   # ~1m voorbij wand
-    z_max = WALL_MARGIN_FT                    # iets achter camera
+    # Z: depth — camera bij room_center, wand voor de camera.
+    # Wand bevindt zich op view-local Z = +dist (positief, voor camera).
+    z_min = -WALL_MARGIN_FT                  # iets achter camera (in ruimte)
+    z_max = dist + WALL_MARGIN_FT + 3.0      # ~1m voorbij wand
 
     transform = Transform.Identity
     transform.Origin = origin
