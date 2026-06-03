@@ -134,11 +134,12 @@ def _set_directshape_workset(ds, workset_id_int):
         return False
 
 
-def _calculate_azimuth(outward_normal):
+def _calculate_azimuth(outward_normal, true_north_rad=0.0):
     """Bereken kompasrichting in graden uit naar-buiten-normaal.
 
     Args:
         outward_normal: XYZ normaal (naar buiten wijzend)
+        true_north_rad: project true north in radialen (0.0 = raw project coordinates)
 
     Returns:
         float: 0=Noord (+Y), 90=Oost (+X), 180=Zuid (-Y), 270=West (-X).
@@ -154,7 +155,14 @@ def _calculate_azimuth(outward_normal):
     import math
     try:
         # atan2(X, Y) voor 0=Noord (+Y), 90=Oost (+X)
-        azimuth_rad = math.atan2(outward_normal.X, outward_normal.Y)
+        # Pas true north correctie toe: roteer de normaal met -true_north_rad
+        cos_tn = math.cos(-true_north_rad)
+        sin_tn = math.sin(-true_north_rad)
+
+        corrected_x = outward_normal.X * cos_tn - outward_normal.Y * sin_tn
+        corrected_y = outward_normal.X * sin_tn + outward_normal.Y * cos_tn
+
+        azimuth_rad = math.atan2(corrected_x, corrected_y)
         azimuth_deg = math.degrees(azimuth_rad)
 
         # Normaliseer naar [0, 360) - schone modulo
@@ -221,6 +229,7 @@ WV_PARAM_DEFS = (
     ("warmteverlies_lagen", "text"),
     ("warmteverlies_azimut", "number"),
     ("warmteverlies_naar_id", "number"),
+    ("warmteverlies_geometry", "text"),
 )
 
 # orient (intern) -> NL label voor warmteverlies_orientatie
@@ -619,6 +628,47 @@ def _face_outer_loop(face):
         except Exception:
             continue
     return pts
+
+
+def _face_to_vertices_json(face):
+    """Converteer face naar JSON string met vertices in meters.
+
+    Gebruikt GetEdgesAsCurveLoops voor schone polygonen (geen triangulatie-soep).
+    Eerste loop = buitenrand, volgende loops = gaten (voor openingen).
+
+    Args:
+        face: Revit Face
+
+    Returns:
+        str: JSON van [[x,y,z], ...] in meters, of "" bij faal
+    """
+    try:
+        loops = face.GetEdgesAsCurveLoops()
+        if loops is None or loops.Count == 0:
+            return ""
+
+        # Eerste loop = buitencontour (de wand/vloer/dak-polygoon)
+        outer_loop = loops[0]
+        vertices = []
+
+        for curve in outer_loop:
+            try:
+                pt = curve.GetEndPoint(0)
+                # Converteer naar meters en rond af op 4 decimalen
+                x_m = round(pt.X * FEET_TO_M, 4)
+                y_m = round(pt.Y * FEET_TO_M, 4)
+                z_m = round(pt.Z * FEET_TO_M, 4)
+                vertices.append([x_m, y_m, z_m])
+            except Exception:
+                continue
+
+        if not vertices:
+            return ""
+
+        import json
+        return json.dumps(vertices)
+    except Exception:
+        return ""
 
 
 def _project_on_plane(p, origin, normal):
@@ -1997,8 +2047,8 @@ def _create_temp_3d_view(doc):
 
 
 def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
-                   area_m2, host_type, type_stapel="", lagen="", azimut=-1.0, naar_id=0):
-    """Zet de 10 warmteverlies_ parameters op een DirectShape (best-effort).
+                   area_m2, host_type, type_stapel="", lagen="", azimut=-1.0, naar_id=0, geometry_json=""):
+    """Zet de 11 warmteverlies_ parameters op een DirectShape (best-effort).
 
     Number-param met float, text-params met string. Ontbrekende param wordt
     netjes overgeslagen (geen crash).
@@ -2015,6 +2065,7 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         lagen: str geconcateneerde laagopbouw ("mat1 10 | mat2 20 | ...")
         azimut: float kompasrichting in graden, -1 voor horizontale vlakken
         naar_id: int element-id van buurruimte, 0 voor exterior/ground
+        geometry_json: str JSON van vertices [[x,y,z], ...] in meters
     """
     if ds is None:
         return
@@ -2027,6 +2078,7 @@ def _set_wv_params(ds, ruimte, naar_ruimte, grenstype, orient_label,
         ("warmteverlies_host_type", host_type),
         ("warmteverlies_type_stapel", type_stapel),
         ("warmteverlies_lagen", lagen),
+        ("warmteverlies_geometry", geometry_json),
     )
     for pname, pval in text_vals:
         try:
@@ -2586,6 +2638,15 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
     ensure_afwerklaag_parameter(doc)
     bootstrap_afwerklaag_from_comments(doc)
 
+    # --- True North ophalen voor compass-correctie ---
+    true_north_rad = 0.0
+    try:
+        from Autodesk.Revit.DB import XYZ
+        proj_pos = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero)
+        true_north_rad = proj_pos.Angle
+    except Exception:
+        pass
+
     # --- Workset resolutie (workshared models) ---
     target_workset_id = None
     if doc.IsWorkshared:
@@ -2773,7 +2834,10 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         stats["type_stack_failed"] += 1
 
                     # --- Azimuth berekenen ---
-                    azimut = _calculate_azimuth(f_outward)
+                    azimut = _calculate_azimuth(f_outward, true_north_rad)
+
+                    # --- Geometrie JSON genereren ---
+                    geometry_json = _face_to_vertices_json(face)
 
                     _set_wv_params(
                         ds,
@@ -2787,6 +2851,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         "",  # lagen (leeg voor non-wall faces)
                         azimut,
                         naar_id,
+                        geometry_json,
                     )
             except Exception:
                 stats["faces_failed"] += 1
@@ -2876,11 +2941,14 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     )
                     if gds is not None:
                         stats["open"] += 1
+                        # Geometrie JSON voor vliesgevel
+                        vlies_geometry_json = _face_to_vertices_json(face)
                         _set_wv_params(
                             gds, room_label, "BUITEN", "exterior",
                             ORIENT_LABEL.get("vliesgevel", "opening"),
                             wd["area_m2"], wall_host_type, "vliesgevel",
-                            "", _calculate_azimuth(w_outward), 0,
+                            "", _calculate_azimuth(w_outward, true_north_rad), 0,
+                            vlies_geometry_json,
                         )
                     continue
 
@@ -2934,11 +3002,14 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     if ds is not None:
                         stats["wall"] += 1
                         stats["netto_wall_m2"] += wd["area_m2"]
+                        # Geometrie JSON voor fallback wand
+                        wall_fallback_geometry_json = _face_to_vertices_json(face)
                         _set_wv_params(
                             ds, room_label, wall_naar, wall_grenstype,
                             ORIENT_LABEL.get("wall", "wand"),
                             wd["area_m2"], wall_host_type, wall_type_stapel,
-                            "", _calculate_azimuth(w_outward), wall_naar_id,
+                            "", _calculate_azimuth(w_outward, true_north_rad), wall_naar_id,
+                            wall_fallback_geometry_json,
                         )
                     continue
 
@@ -2950,11 +3021,14 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                     netto = 0.0
                 stats["netto_wall_m2"] += netto
 
+                # Geometrie JSON voor wand met gaten
+                wall_with_holes_geometry_json = _face_to_vertices_json(face)
                 _set_wv_params(
                     ds, room_label, wall_naar, wall_grenstype,
                     ORIENT_LABEL.get("wall", "wand"),
                     netto, wall_host_type, wall_type_stapel,
-                    "", _calculate_azimuth(w_outward), wall_naar_id,
+                    "", _calculate_azimuth(w_outward, true_north_rad), wall_naar_id,
+                    wall_with_holes_geometry_json,
                 )
 
                 # Render gematchte openingen als blauwe rechthoek IN het gat
@@ -2976,12 +3050,23 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         rendered_openings.add(ins_key)
                         stats["openings"] += 1
                         # Opening erft adjacency van host-wand (kan binnendeuren zijn)
+                        # Geometrie JSON voor opening-in-gat: gebruik inner_corners rechthoek
+                        import json
+                        opening_vertices = []
+                        for corner in inner_corners:
+                            x_m = round(corner.X * FEET_TO_M, 4)
+                            y_m = round(corner.Y * FEET_TO_M, 4)
+                            z_m = round(corner.Z * FEET_TO_M, 4)
+                            opening_vertices.append([x_m, y_m, z_m])
+                        opening_geometry_json = json.dumps(opening_vertices)
+
                         _set_wv_params(
                             ods, room_label, wall_naar, wall_grenstype,
                             ORIENT_LABEL.get("open", "opening"),
                             hole_area, wall_host_type,
                             _element_type_name(doc, rect["insert"]),
                             "", -1.0, wall_naar_id,  # Geen azimuth, wel buur-id van host-wand
+                            opening_geometry_json,
                         )
             except Exception:
                 stats["faces_failed"] += 1
@@ -3014,6 +3099,16 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                         if wid is not None:
                             host_ids.append(wid)
                         # Fallback: geen face-match, host-adjacency onbekend -> exterior
+                        # Geometrie JSON voor fallback opening: gebruik rect corners
+                        import json
+                        fallback_vertices = []
+                        for corner in rect.get("corners", []):
+                            x_m = round(corner.X * FEET_TO_M, 4)
+                            y_m = round(corner.Y * FEET_TO_M, 4)
+                            z_m = round(corner.Z * FEET_TO_M, 4)
+                            fallback_vertices.append([x_m, y_m, z_m])
+                        fallback_geometry_json = json.dumps(fallback_vertices)
+
                         _set_wv_params(
                             ods, room_label, "BUITEN", "exterior",
                             ORIENT_LABEL.get("open", "opening"),
@@ -3021,6 +3116,7 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                             _innermost_host_type_name(doc, host_ids),
                             _element_type_name(doc, rect["insert"]),
                             "", -1.0, 0,  # Openingen: geen azimuth, geen buur-id
+                            fallback_geometry_json,
                         )
                 except Exception:
                     continue

@@ -93,6 +93,118 @@ def _parse_layers_string(layers_string):
     return layers
 
 
+def _get_true_north_degrees(doc):
+    """Haal project true north op in graden.
+
+    Args:
+        doc: Revit Document
+
+    Returns:
+        float: true north angle in graden (0.0 bij faal)
+    """
+    try:
+        from Autodesk.Revit.DB import XYZ
+        import math
+        proj_pos = doc.ActiveProjectLocation.GetProjectPosition(XYZ.Zero)
+        true_north_rad = proj_pos.Angle
+        return math.degrees(true_north_rad)
+    except Exception:
+        return 0.0
+
+
+def _parse_geometry_json(geometry_json_str):
+    """Parse warmteverlies_geometry JSON string naar vertices lijst.
+
+    Args:
+        geometry_json_str: str JSON van [[x,y,z], ...] in meters
+
+    Returns:
+        list: [[x,y,z], ...] of [] bij faal/leeg
+    """
+    if not geometry_json_str:
+        return []
+    try:
+        import json
+        vertices = json.loads(geometry_json_str)
+        if isinstance(vertices, list):
+            return vertices
+    except Exception:
+        pass
+    return []
+
+
+def _find_room_floor_polygon(doc, room_label):
+    """Zoek floor-surface vertices voor een room om boundary_polygon te maken.
+
+    Args:
+        doc: Revit Document
+        room_label: str room label ("number name") om de floor te vinden
+
+    Returns:
+        list: [[x,y], ...] XY-projectie van floor vertices in meters, of [] bij faal
+    """
+    try:
+        from Autodesk.Revit.DB import FilteredElementCollector, DirectShape
+
+        # Zoek WV_BND shapes met orientation=vloer voor deze room
+        collector = (
+            FilteredElementCollector(doc)
+            .OfClass(DirectShape)
+            .WhereElementIsNotElementType()
+        )
+
+        for ds in collector:
+            try:
+                # Check WV_BND prefix
+                comment_param = ds.LookupParameter("Comments")
+                if comment_param is None or not comment_param.HasValue:
+                    continue
+                comment_value = comment_param.AsString()
+                if not comment_value or not comment_value.startswith("WV_BND"):
+                    continue
+
+                # Check orientation = vloer
+                orient_param = ds.LookupParameter("warmteverlies_orientatie")
+                if orient_param is None or not orient_param.HasValue:
+                    continue
+                orient = orient_param.AsString()
+                if orient != "vloer":
+                    continue
+
+                # Check room match
+                ruimte_param = ds.LookupParameter("warmteverlies_ruimte")
+                if ruimte_param is None or not ruimte_param.HasValue:
+                    continue
+                ruimte_label = ruimte_param.AsString()
+
+                # Match op room label
+                if ruimte_label != room_label:
+                    continue
+
+                # Parse geometry
+                geom_param = ds.LookupParameter("warmteverlies_geometry")
+                if geom_param is None or not geom_param.HasValue:
+                    continue
+                geometry_json = geom_param.AsString()
+                vertices_3d = _parse_geometry_json(geometry_json)
+
+                if vertices_3d:
+                    # Project naar XY (drop Z coordinate)
+                    boundary_polygon = []
+                    for vertex in vertices_3d:
+                        if len(vertex) >= 2:
+                            boundary_polygon.append([vertex[0], vertex[1]])
+                    return boundary_polygon
+
+            except Exception:
+                continue
+
+    except Exception:
+        pass
+
+    return []
+
+
 def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
     """Bouw ThermalImport JSON uit rooms_data + WV_BND DirectShapes.
 
@@ -117,6 +229,9 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
         project_name = doc.Title or "Untitled"
     except Exception:
         pass
+
+    # True north ophalen
+    true_north_deg = _get_true_north_degrees(doc)
 
     # ========================================
     # 1. ROOMS verwerken
@@ -166,12 +281,18 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 "height_m": round(height_m, 2),
                 "volume_m3": round(volume_m3, 2)
             }
-            thermal_rooms.append(thermal_room)
 
             # Maps
             room_eid_map[element_id] = room_id
             room_label = "{0} {1}".format(number, name).strip()
             room_label_map[room_label] = room_id
+
+            # Boundary polygon ophalen (na room_label_map vulling)
+            boundary_polygon = _find_room_floor_polygon(doc, room_label)
+            if boundary_polygon:
+                thermal_room["boundary_polygon"] = boundary_polygon
+
+            thermal_rooms.append(thermal_room)
 
         except Exception:
             # Skip malformed room data
@@ -294,6 +415,16 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             except Exception:
                 pass
 
+            # geometry vertices
+            vertices = []
+            try:
+                geom_param = ds.LookupParameter("warmteverlies_geometry")
+                if geom_param and geom_param.HasValue:
+                    geometry_json = geom_param.AsString()
+                    vertices = _parse_geometry_json(geometry_json)
+            except Exception:
+                pass
+
             # Raw construction object (per face)
             raw_construction_count += 1
             construction = {
@@ -304,7 +435,8 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 "gross_area_m2": round(area_m2, 2),
                 "revit_type_name": constructie_naam,
                 "layers": layers,
-                "_host_type": host_type  # interne hint
+                "_host_type": host_type,  # interne hint
+                "_vertices": vertices  # geometrie voor consolidatie
             }
             raw_constructions.append(construction)
 
@@ -342,6 +474,13 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
         # Neem eerste element voor gemeenschappelijke velden
         first_con = group_constructions[0]
 
+        # Consolideer vertices: neem de grootste (meeste punten) binnen de groep
+        best_vertices = []
+        for con in group_constructions:
+            con_vertices = con.get("_vertices", [])
+            if len(con_vertices) > len(best_vertices):
+                best_vertices = con_vertices
+
         consolidated_con = {
             "id": "con-{0}".format(construction_count),
             "room_a": first_con["room_a"],
@@ -351,8 +490,13 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             "gross_area_m2": round(total_area, 2),
             "revit_type_name": first_con["revit_type_name"],
             "layers": first_con["layers"],  # Binnen zelfde type identiek
-            "_host_type": first_con["_host_type"]  # interne hint
+            "_host_type": first_con["_host_type"],  # interne hint
+            "_vertices": best_vertices  # beste geometrie uit de groep
         }
+
+        # Voeg vertices toe aan output (optioneel veld)
+        if best_vertices:
+            consolidated_con["vertices"] = best_vertices
         constructions.append(consolidated_con)
 
     # Voeg ground pseudo-room toe indien nodig
@@ -498,6 +642,16 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
             if opening_azimut is not None and opening_azimut >= 0:
                 compass = _azimuth_to_compass(opening_azimut % 360.0)
 
+            # Opening geometry vertices
+            opening_vertices = []
+            try:
+                geom_param = ds.LookupParameter("warmteverlies_geometry")
+                if geom_param and geom_param.HasValue:
+                    geometry_json = geom_param.AsString()
+                    opening_vertices = _parse_geometry_json(geometry_json)
+            except Exception:
+                pass
+
             # Type bepalen
             opening_type = "window"  # default
             constructie_lower = constructie_naam.lower()
@@ -574,7 +728,8 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                     "area_m2": opening_area_m2,
                     "host_type": host_type,
                     "room_b": opening_room_b,  # geef de juiste room_b door
-                    "grenstype": grenstype
+                    "grenstype": grenstype,
+                    "vertices": opening_vertices  # geometrie voor orphan fallback
                 })
                 continue
 
@@ -591,6 +746,10 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
 
             if sill_height_mm is not None:
                 opening["sill_height_mm"] = sill_height_mm
+
+            # Voeg vertices toe (optioneel veld)
+            if opening_vertices:
+                opening["vertices"] = opening_vertices
 
             openings.append(opening)
 
@@ -816,13 +975,16 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
         clean_con = dict(con)  # shallow copy
         if "_host_type" in clean_con:
             del clean_con["_host_type"]
+        if "_vertices" in clean_con:
+            del clean_con["_vertices"]
         clean_constructions.append(clean_con)
 
     result = {
-        "version": "1.0",
+        "version": "1.1",
         "source": "revit-raycast",
         "exported_at": exported_at,
         "project_name": project_name,
+        "true_north_deg": true_north_deg,
         "rooms": thermal_rooms,
         "constructions": clean_constructions,
         "openings": openings,
