@@ -1,6 +1,16 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 31 mei 2026*
+*Laatste update: 3 juni 2026*
+
+---
+
+## Warmteverlies JSON-export — conformiteit (3 juni 2026, Reddingspost Kijkduin validatie)
+
+> Gevonden bij PM-verificatie van een echte export (`Reddingspost_kijkduin.heatloss.json`) tegen de Revit-grondwaarheid op model `2786_Bouwkundige_model`. Producent = Catalogus-/RaycastExport (`lib/warmteverlies/raycast_scanner.py`). De gebruiker moest de ontbrekende vliesgevels handmatig aanvullen vóór de berekening klopte.
+
+- [ ] **Vliesgevel valt weg waar geen verwarmde ruimte direct achter de grens zit** — `raycast_scanner.py:617` skipt vertikale `GetBoundaryFaceInfo Count==0`-faces (bewust, spiegelt commit `39c6768`). Bij een dubbele schil / spouw / glasgevel die aan een geplaatste **"Buiten"**-ruimte grenst, zit de curtain wall niet als room-bounding sub-face op de verwarmde ruimte → **~87 van 165 m² (53%) vliesgevel ontbrak** in de export. Fix: voor vertikale Count==0-faces raycasten (ReferenceIntersector, zoals al voor horizontale faces gebeurt) i.p.v. skippen — minstens wanneer er een curtain wall / glasgevel binnen X m achter ligt. Testcase: model 2786, ruimtes Politiepost/Instructie/Ieeftuimte/piket; verwacht totaal vliesgevel ≈ 165 m².
+- [ ] **uitkijkpost / niveau-01 dubbelhoge beglazing** — ~32 m² curtain wall op niveau 01 (`uitkijkpost` + `uitkijkpost-uit`) grenst aan `18. piket` + `70 buiten`; raycast miste 'm (piket kreeg 1,8 m² extWand, 0 vliesgevel). Verifiëren dat dubbelhoge/schuine beglazing op hogere niveaus meekomt.
+- [ ] **`openverbinding / glas`-constructie exporteert met U=0 (lege `layers`)** — cat-7 ("22") elementen (Instructie 0,32 m² + Politiepost 1,00 m²) komen met `layers: []` → U=0 → 0 W verlies. Of een glas-U toekennen, of als opening behandelen. Klein (1,3 m²) maar stil onder-tellend.
 
 ---
 
