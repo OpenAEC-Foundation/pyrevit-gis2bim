@@ -1,0 +1,6 @@
+title: Catalogus Export
+tooltip: >-
+  Exporteer de bouwkundige catalogus (constructies, openingen, ruimtes)
+  naar een ThermalImport JSON (v1.1, met geometrie) voor open-heatloss-studio
+author: 3BM Bouwkunde
+highlight: new

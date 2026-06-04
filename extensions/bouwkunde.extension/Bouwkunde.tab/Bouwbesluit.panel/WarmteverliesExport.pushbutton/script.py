@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Warmteverlies Catalogus Export — ThermalImport JSON voor open-heatloss-studio.
+"""Warmteverlies Catalogus Export - ThermalImport JSON voor open-heatloss-studio.
 
 Exporteert de WV_BND catalogus + rooms naar een ThermalImport JSON bestand
 dat de warmteverlies-tool kan inlezen voor U-waarde-consolidatie en berekening.
 
-IronPython 2.7 — geen f-strings, geen type hints.
+IronPython 2.7 - geen f-strings, geen type hints.
 """
 
 __title__ = "Catalogus\nExport"
@@ -41,7 +41,7 @@ def run_catalog_export():
         forms.alert("Geen Revit document geopend.", title="Fout")
         return
 
-    output.print_md("## Warmteverlies — Catalogus Export")
+    output.print_md("## Warmteverlies - Catalogus Export")
 
     # --- Rooms ophalen ---
     output.print_md("**Stap 1:** Rooms verzamelen...")
@@ -118,7 +118,7 @@ def run_catalog_export():
 
         # IronPython 2.7 kent geen json.encoder.FLOAT_REPR en serialiseert floats
         # met volle Py2-precisie (9.6999999999999993). Rond daarom op tekst-niveau
-        # af op 2 decimalen: alleen JSON-number-waarden direct na een ':' — strings
+        # af op 2 decimalen: alleen JSON-number-waarden direct na een ':' - strings
         # zoals "version": "1.0" of materiaalnamen blijven ongemoeid.
         json_text = json.dumps(export_data, indent=2)
         json_text = re.sub(
