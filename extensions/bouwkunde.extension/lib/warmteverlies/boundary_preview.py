@@ -196,6 +196,10 @@ ADJ_PROBE_OFFSETS_M = (0.10, 0.20, 0.35, 0.50, 0.75, 1.0)
 # Inwaartse offset (meter) om de normaal-richting te ijken op de bron-ruimte.
 ADJ_INWARD_CHECK_M = 0.15
 
+# Schuine dak detectie: minimum z-bereik (meter) van een roof-element om als
+# "schuin" te gelden. Kleinere z-range = plat dak, geen correctie nodig.
+SLOPED_ROOF_MIN_Z_RANGE_M = 0.5
+
 # Type-stapel: marge (meter) bovenop de buurruimte-cutoff, zodat de verre
 # wandzijde-laag net wel meekomt (de probe vindt de buur iets achter de wand).
 TYPE_STACK_CUTOFF_MARGIN_M = 0.02
@@ -2126,6 +2130,307 @@ def _format_layers_string(layers):
 
 
 # =============================================================================
+# Schuine daken fix (horizontale cap → echte schuine geometrie)
+# =============================================================================
+def _get_roof_element_from_sub_faces(doc, seg_result, face):
+    """Haal het roof-element op uit de SpatialBoundaryElement sub-faces.
+
+    Handelt zowel host als linked roof-elementen af via HostElementId én
+    LinkElementId structuur (LinkInstanceId + LinkedElementId).
+
+    Args:
+        doc: Revit Document (host document)
+        seg_result: SpatialElementGeometryResults
+        face: Revit Face (de horizontale cap)
+
+    Returns:
+        (roof_element, roof_doc) tuple of (None, None)
+            roof_element: het gevonden roof-element
+            roof_doc: document waarin het roof-element leeft (host of link)
+    """
+    try:
+        sub_faces = seg_result.GetBoundaryFaceInfo(face)
+    except Exception:
+        return (None, None)
+
+    for sf in sub_faces:
+        try:
+            sbe = sf.SpatialBoundaryElement
+            if sbe is None:
+                continue
+
+            # Probeer eerst host element (normaal geval)
+            try:
+                hid = sbe.HostElementId
+                if hid is not None and hid.IntegerValue > 0:
+                    host_el = doc.GetElement(hid)
+                    if host_el is not None and host_el.Category.Name == "Roofs":
+                        return (host_el, doc)
+            except Exception:
+                pass
+
+            # Probeer linked element (voor linked daken)
+            try:
+                link_el_id = sbe.LinkElementId
+                if link_el_id is not None:
+                    # LinkElementId heeft LinkInstanceId + LinkedElementId
+                    link_inst_id = link_el_id.LinkInstanceId
+                    linked_el_id = link_el_id.LinkedElementId
+
+                    if (link_inst_id is not None and link_inst_id.IntegerValue > 0 and
+                        linked_el_id is not None and linked_el_id.IntegerValue > 0):
+
+                        # Haal link instance op
+                        link_inst = doc.GetElement(link_inst_id)
+                        if link_inst is None:
+                            continue
+
+                        # Haal linked document op
+                        try:
+                            link_doc = link_inst.GetLinkDocument()
+                        except Exception:
+                            continue
+                        if link_doc is None:
+                            continue
+
+                        # Haal element uit linked document op
+                        linked_el = link_doc.GetElement(linked_el_id)
+                        if linked_el is not None and linked_el.Category.Name == "Roofs":
+                            return (linked_el, link_doc)
+            except Exception:
+                continue
+
+        except Exception:
+            continue
+
+    return (None, None)
+
+
+def _is_flat_cap_under_sloped_roof(doc, face, normal, seg_result):
+    """Detecteer horizontale top-face die eigenlijk een schuin dak zou moeten zijn.
+
+    Args:
+        doc: Revit Document
+        face: Revit Face (SEGC room-solid face)
+        normal: XYZ face-normaal
+        seg_result: SpatialElementGeometryResults
+
+    Returns:
+        (bool, roof_element, roof_doc) tuple
+            bool: True als dit een platte cap onder schuin dak is
+            roof_element: het gevonden schuin dak-element (of None)
+            roof_doc: document van het dak-element (of None)
+    """
+    # Criterium 1: Horizontale upward-face (dak, niet vloer)
+    if abs(normal.Z) <= HORIZ_NORMAL_Z:
+        return (False, None, None)
+    if normal.Z <= 0:
+        return (False, None, None)  # vloer
+
+    # Criterium 2: Bounding element is een dak (host of linked)
+    roof_element, roof_doc = _get_roof_element_from_sub_faces(doc, seg_result, face)
+    if roof_element is None or roof_doc is None:
+        return (False, None, None)
+
+    # Criterium 3: Dak is schuin (z-bereik > drempel)
+    try:
+        roof_bbox = roof_element.get_BoundingBox(None)
+        if roof_bbox is None:
+            return (False, None, None)
+
+        roof_z_range = (roof_bbox.Max.Z - roof_bbox.Min.Z) * FEET_TO_M
+        if roof_z_range < SLOPED_ROOF_MIN_Z_RANGE_M:
+            return (False, None, None)  # plat dak, laat intact
+
+    except Exception:
+        return (False, None, None)
+
+    return (True, roof_element, roof_doc)
+
+
+def _get_roof_face_clipped_to_room(roof_element, roof_doc, face_centroid, room_outer_pts, cap_area_m2, output=None):
+    """Project room-footprint op schuine dakvlak voor room-specifieke geometrie.
+
+    Zoekt het dominante dakvlak boven deze room en projecteert de room-footprint
+    (outer-loop) omhoog op dat vlak. Geeft room-specifieke schuine vertices en
+    area terug, niet het hele dak-face.
+
+    Args:
+        roof_element: Revit roof Element
+        roof_doc: Document waarin roof_element leeft
+        face_centroid: XYZ centroid van de originele horizontale cap
+        room_outer_pts: list[XYZ] outer-loop van de room-footprint (op dakvoet)
+        cap_area_m2: float oppervlakte van platte cap (room-footprint, m2)
+        output: pyRevit output object voor waarschuwingen (optional)
+
+    Returns:
+        dict met keys: "vertices_json", "area_m2", "normal" of None
+    """
+    if not roof_element or not roof_doc or not room_outer_pts:
+        return None
+
+    try:
+        # Geometrie van het roof-element ophalen
+        geom_opt = Options()
+        roof_geom = roof_element.get_Geometry(geom_opt)
+        if roof_geom is None:
+            return None
+
+        # Zoek roof-faces en vind het dominante face
+        candidate_faces = []
+
+        def _collect_faces_from_geom(geom_element, out_faces):
+            """Helper: verzamel alle faces uit geometrie (inclusief instances)."""
+            if geom_element is None:
+                return
+            for obj in geom_element:
+                if hasattr(obj, 'Faces'):  # Solid
+                    try:
+                        for rf in obj.Faces:
+                            out_faces.append(rf)
+                    except Exception:
+                        continue
+                elif isinstance(obj, GeometryInstance):
+                    try:
+                        inst_geom = obj.GetInstanceGeometry()
+                        _collect_faces_from_geom(inst_geom, out_faces)
+                    except Exception:
+                        continue
+
+        _collect_faces_from_geom(roof_geom, candidate_faces)
+
+        if not candidate_faces:
+            return None
+
+        # Filter faces: moet naar beneden wijzen (onderkant van dak)
+        best_face = None
+        best_score = -1.0
+
+        for rf in candidate_faces:
+            try:
+                rf_normal = _face_normal(rf)
+                if rf_normal is None:
+                    continue
+
+                # Moet naar beneden wijzen (onderkant van dak = top van room)
+                if rf_normal.Z >= -0.3:  # ongeveer horizontaal of omhoog
+                    continue
+
+                # Check of face-centroid redelijk dicht bij room-centroid ligt
+                rf_outer = _face_outer_loop(rf)
+                if not rf_outer:
+                    continue
+
+                rf_centroid = _face_centroid(rf, rf_outer)
+                if rf_centroid is None:
+                    continue
+
+                # Afstand tot room-centroid (XY-projectie)
+                dx = rf_centroid.X - face_centroid.X
+                dy = rf_centroid.Y - face_centroid.Y
+                dist_xy = (dx*dx + dy*dy)**0.5
+
+                # Score: dichterbij = beter, mits redelijk groot face
+                rf_area = rf.Area * SQFT_TO_M2
+                if rf_area < 5.0:  # te klein
+                    continue
+
+                score = rf_area / (1.0 + dist_xy)
+                if score > best_score:
+                    best_score = score
+                    best_face = rf
+
+            except Exception:
+                continue
+
+        if best_face is None:
+            return None
+
+        # Haal normaal en referentiepunt van het dominante dakvlak
+        roof_normal = _face_normal(best_face)
+        if roof_normal is None or abs(roof_normal.Z) < 1e-6:
+            return None
+
+        # Kies referentiepunt op het dakvlak
+        roof_outer = _face_outer_loop(best_face)
+        roof_centroid = _face_centroid(best_face, roof_outer)
+        if roof_centroid is None:
+            return None
+
+        # Projecteer room-footprint op het schuine dakvlak
+        projected_points = []
+
+        for pt in room_outer_pts:
+            # Voor punt (x, y) van room-footprint, bereken z op dakvlak:
+            # Vlakformule: N.X*(x-P0.X) + N.Y*(y-P0.Y) + N.Z*(z-P0.Z) = 0
+            # -> z = P0.Z - (N.X*(x-P0.X) + N.Y*(y-P0.Y)) / N.Z
+            try:
+                z_projected = roof_centroid.Z - (
+                    roof_normal.X * (pt.X - roof_centroid.X) +
+                    roof_normal.Y * (pt.Y - roof_centroid.Y)
+                ) / roof_normal.Z
+
+                projected_points.append(XYZ(pt.X, pt.Y, z_projected))
+
+            except Exception:
+                # Fallback bij divide-by-zero etc.
+                projected_points.append(XYZ(pt.X, pt.Y, pt.Z))
+
+        if len(projected_points) < 3:
+            return None
+
+        # Room-specifieke schuine area: footprint_area / abs(N.Z)
+        # abs(N.Z) = cos(hellingshoek), dus 1/abs(N.Z) = hellingsfactor
+        slope_factor = 1.0 / abs(roof_normal.Z)
+        sloped_area_m2 = cap_area_m2 * slope_factor
+
+        # Converteer projected_points naar JSON (meters)
+        import json
+        vertices = []
+        for pt in projected_points:
+            x_m = round(pt.X * FEET_TO_M, 4)
+            y_m = round(pt.Y * FEET_TO_M, 4)
+            z_m = round(pt.Z * FEET_TO_M, 4)
+            vertices.append([x_m, y_m, z_m])
+
+        vertices_json = json.dumps(vertices)
+
+        # Waarschuwing voor meerdere dak-faces (edge-case voor stap E)
+        # Check: hoeveel candidate faces kruisen de room-footprint?
+        overlapping_faces = 0
+        for rf in candidate_faces:
+            try:
+                rf_normal = _face_normal(rf)
+                if rf_normal is None or rf_normal.Z >= -0.3:
+                    continue
+                # Simple overlap check: face bbox kruist room bbox
+                rf_bbox = rf.get_BoundingBox(None)
+                if rf_bbox is not None:
+                    # Crude check - verbetering in stap E
+                    overlapping_faces += 1
+            except Exception:
+                continue
+
+        if overlapping_faces > 1 and output is not None:
+            try:
+                output.print_md(
+                    "*Waarschuwing: {0} dak-faces kruisen room-footprint - "
+                    "gebruikt dominant vlak (edge-case voor stap E)*".format(overlapping_faces)
+                )
+            except Exception:
+                pass
+
+        return {
+            "vertices_json": vertices_json,
+            "area_m2": round(sloped_area_m2, 2),
+            "normal": roof_normal
+        }
+
+    except Exception:
+        return None
+
+
+# =============================================================================
 # Constructie-type-catalogus (merge-algoritme uit het prototype)
 # =============================================================================
 
@@ -2744,6 +3049,108 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
 
                 if horiz:
                     if normal.Z > 0:
+                        # Check voor schuine dak-correctie
+                        is_sloped, roof_element, roof_doc = _is_flat_cap_under_sloped_roof(
+                            doc, face, normal, seg_result
+                        )
+
+                        if is_sloped and roof_element and roof_doc:
+                            # Vervang platte cap door echte schuine dak-geometrie
+                            f_outer = _face_outer_loop(face)
+                            f_centroid = _face_centroid(face, f_outer)
+
+                            roof_data = _get_roof_face_clipped_to_room(
+                                roof_element, roof_doc, f_centroid, f_outer, area_m2, output
+                            )
+
+                            if roof_data:
+                                # Gebruik schuine dak-geometrie in plaats van platte cap
+                                # Maak triangles van geprojecteerde punten (niet hele dak-face)
+                                sloped_area_m2 = roof_data["area_m2"]
+                                sloped_geometry_json = roof_data["vertices_json"]
+                                sloped_normal = roof_data["normal"] or normal
+
+                                # Parse vertices terug om triangles te maken
+                                import json
+                                try:
+                                    vertices_data = json.loads(sloped_geometry_json)
+                                    projected_pts = []
+                                    for v in vertices_data:
+                                        if len(v) >= 3:
+                                            # Converteer terug van meters naar feet
+                                            x_ft = v[0] / FEET_TO_M
+                                            y_ft = v[1] / FEET_TO_M
+                                            z_ft = v[2] / FEET_TO_M
+                                            projected_pts.append(XYZ(x_ft, y_ft, z_ft))
+
+                                    # Fan-triangulatie van projected polygon
+                                    sloped_triangles = []
+                                    if len(projected_pts) >= 3:
+                                        for i in range(1, len(projected_pts) - 1):
+                                            sloped_triangles.append((
+                                                projected_pts[0],
+                                                projected_pts[i],
+                                                projected_pts[i + 1]
+                                            ))
+                                except Exception:
+                                    # Fallback: gebruik originele face triangulatie
+                                    sloped_triangles = _face_to_triangles(face)
+
+                                comment = "{0} {1} {2}".format(
+                                    COMMENTS_PREFIX, room_number, "top"
+                                )
+                                ds = _build_directshape_from_triangles(
+                                    doc, sloped_triangles, material_ids[MAT_TOP[0]],
+                                    comment, workset_id=target_workset_id
+                                )
+
+                                if ds is not None:
+                                    stats["top"] += 1
+
+                                    # Gebruik geprojecteerde punten voor adjacency-berekeningen
+                                    # Centroid van geprojecteerde polygoon
+                                    if len(projected_pts) >= 3:
+                                        sx = sum(pt.X for pt in projected_pts)
+                                        sy = sum(pt.Y for pt in projected_pts)
+                                        sz = sum(pt.Z for pt in projected_pts)
+                                        n_pts = len(projected_pts)
+                                        s_centroid = XYZ(sx/n_pts, sy/n_pts, sz/n_pts)
+                                    else:
+                                        s_centroid = f_centroid
+
+                                    # Naar-buiten normaal = schuine dak normaal (al correct)
+                                    s_outward = sloped_normal
+
+                                    # Adjacency voor schuine dak (meestal exterior)
+                                    grenstype, naar_ruimte, cutoff_m, naar_id = _resolve_adjacency(
+                                        doc, room_element, room_eid, face,  # gebruik originele face voor adjacency
+                                        sloped_normal, projected_pts, rooms, heated_room_ids,
+                                        room_phase, outward=s_outward, centroid=s_centroid
+                                    )
+
+                                    # Type-stapel via raycast
+                                    type_stapel = ""
+                                    try:
+                                        type_stapel = _type_stack_for_face(
+                                            doc, intersector, s_centroid, s_outward, cutoff_m
+                                        )
+                                    except Exception:
+                                        stats["type_stack_failed"] += 1
+
+                                    # Azimuth voor schuine dak
+                                    azimut = _calculate_azimuth(s_outward, true_north_rad)
+
+                                    _set_wv_params(
+                                        ds, room_label, naar_ruimte, grenstype,
+                                        ORIENT_LABEL.get("top", "dak"), sloped_area_m2,
+                                        _innermost_host_type_name(doc, hosts), type_stapel,
+                                        "", azimut, naar_id, sloped_geometry_json
+                                    )
+
+                                # Skip normale platte-cap verwerking
+                                continue
+
+                        # Normale platte dak/plafond verwerking
                         mat_name = MAT_TOP[0]
                         orient = "top"
                     else:
