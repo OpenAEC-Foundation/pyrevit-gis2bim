@@ -214,6 +214,12 @@ def scan_room_boundaries(doc, room, view3d, all_rooms):
             face_dbg["n_constructions"] = dc
             face_dbg["n_openings"] = do
 
+    # Bug G taak 3: Dedup open_connections tegen openings (post-processing)
+    # Filter open_connections die z-range overlap hebben met FindInserts openings
+    result["open_connections"] = _dedup_open_connections_against_openings(
+        result["open_connections"], result["openings"]
+    )
+
     return result
 
 
@@ -233,6 +239,61 @@ def _xyz_to_list(xyz):
         return [round(xyz.X, 4), round(xyz.Y, 4), round(xyz.Z, 4)]
     except Exception:
         return None
+
+
+def _dedup_open_connections_against_openings(open_connections, openings):
+    """Filter open_connections die overlappen met bestaande openings.
+
+    Voorkomt dat lege ray-heights (via _detect_open_connections) dupliceren
+    met reeds gevonden openings (via Wall.FindInserts). Controleert richting
+    en Z-range overlap.
+
+    Args:
+        open_connections: Lijst open connection dicts
+        openings: Lijst opening dicts met 'wall_direction', 'z_min_m', 'z_max_m'
+
+    Returns:
+        list: gefilterde open connection dicts
+    """
+    if not open_connections or not openings:
+        return open_connections
+
+    filtered = []
+    for conn in open_connections:
+        conn_direction = conn.get("source_direction") or conn.get("direction")
+        if conn_direction is None:
+            # Geen richting bekend - behoud conservatief
+            filtered.append(conn)
+            continue
+
+        # Check overlap met openings in dezelfde richting
+        overlaps = False
+        for opening in openings:
+            op_direction = opening.get("wall_direction")
+            if op_direction != conn_direction:
+                continue
+
+            # Schat Z-range van open connection
+            # (open connections hebben geen directe z_min/z_max)
+            conn_height = conn.get("height_m", 0.0)
+            if conn_height <= 0:
+                continue
+
+            # Neem aan dat open connection ergens in de face zit
+            # (exacte z-position is onbekend bij ray-gebaseerde detectie)
+            op_z_min = opening.get("z_min_m", 0.0)
+            op_z_max = opening.get("z_max_m", 0.0)
+
+            # Conservative overlap check: als er een opening is in deze richting
+            # en de hoogte plausibel is, skip de open_connection
+            if conn_height > 0.3 and op_z_max > op_z_min:
+                overlaps = True
+                break
+
+        if not overlaps:
+            filtered.append(conn)
+
+    return filtered
 
 
 def _category_id_to_name(cat_id):
@@ -1020,15 +1081,17 @@ def _scan_wall_face(doc, intersector, room_center_xy, normal,
 
         z += RAY_HEIGHT_STEP_M
 
-    # _detect_open_connections gedeactiveerd sinds Bug F fix (Optie C hybride):
-    # openings komen nu via Wall.FindInserts() met curtain-panel expansion.
-    # De legacy raycast-empty-heights detectie dupliceert + dubbeltelt.
-    # Behoud voor referentie, activeer opnieuw alleen als er rooms zijn zonder
-    # FindInserts-dekking (bv open doorgangen ZONDER wall-element).
-    # open_conns = _detect_open_connections(
-    #     empty_heights, z_min_m, z_max_m, direction
-    # )
-    # result["open_connections"].extend(open_conns)
+    # Re-enabled _detect_open_connections (Bug G taak 3):
+    # openings komen primair via Wall.FindInserts() met curtain-panel expansion,
+    # maar open doorgangen ZONDER wall-element vereisen nog steeds de legacy
+    # raycast-empty-heights detectie. Dedup wordt later gedaan (post-processing).
+    open_conns = _detect_open_connections(
+        empty_heights, z_min_m, z_max_m, direction
+    )
+    # Store direction info in open_conns voor latere dedup
+    for conn in open_conns:
+        conn["source_direction"] = direction
+    result["open_connections"].extend(open_conns)
 
     if not stacks_by_height:
         return
@@ -1870,6 +1933,91 @@ def _find_room_at_exit(doc, current_room, ray_origin, ray_direction,
         return None
 
 
+def _determine_wall_terminal_type(wall, wall_doc, doc, room, face_normal, view3d):
+    """Bepaal terminal type van een wall - simplified versie voor binnendeur filter.
+
+    Gebruikt een ray vanuit room center in face_normal richting om te bepalen
+    of de wall naar buiten (outside) of naar een andere room leidt.
+
+    Args:
+        wall: Revit Wall element
+        wall_doc: Document van de wall (host of linked)
+        doc: Revit host Document
+        room: Huidige Room element
+        face_normal: XYZ face normal richting
+        view3d: Revit View3D voor raycast
+
+    Returns:
+        str: "outside" of room_id als int, of "ground"/"water" voor topo
+    """
+    try:
+        # Simplified ray vanuit room center in face_normal richting
+        room_pt = room.Location.Point
+        room_center = XYZ(room_pt.X, room_pt.Y, room_pt.Z + 1.0 / FEET_TO_M)  # +1m voor mid-height
+
+        # Gebruik de bestaande intersector logica voor consistency
+        intersector = ReferenceIntersector(
+            list(CONSTRUCTION_CATEGORIES) + list(OPENING_CATEGORIES),
+            FindReferenceTarget.Element,
+            view3d
+        )
+
+        if SCAN_LINKED_MODELS:
+            linked_docs = FilteredElementCollector(doc).OfClass(RevitLinkInstance)
+            for link_instance in linked_docs:
+                if link_instance.GetLinkDocument() is not None:
+                    intersector.SetLinkInstanceId(link_instance.Id)
+
+        # Ray richting normaliseren
+        try:
+            ray_direction = XYZ(face_normal.X, face_normal.Y, 0.0).Normalize()
+        except Exception:
+            return "outside"
+
+        # Cast ray om te kijken waar we uitkomen
+        ref_with_context = intersector.FindNearest(room_center, ray_direction)
+        if ref_with_context is None:
+            return "outside"
+
+        ref = ref_with_context.GetReference()
+        hit_distance = ref_with_context.Proximity * FEET_TO_M
+
+        # Punt net voorbij de hit
+        exit_point = XYZ(
+            room_center.X + ray_direction.X * (hit_distance + 0.1) / FEET_TO_M,
+            room_center.Y + ray_direction.Y * (hit_distance + 0.1) / FEET_TO_M,
+            room_center.Z
+        )
+
+        # Check welke room daar is (gebruik room phase)
+        phase = None
+        try:
+            phase = doc.GetElement(room.CreatedPhaseId)
+        except Exception:
+            try:
+                phase = list(doc.Phases)[-1] if doc.Phases else None
+            except Exception:
+                pass
+
+        if phase is None:
+            return "outside"
+
+        found_room = doc.GetRoomAtPoint(exit_point, phase)
+        if found_room is None:
+            return "outside"
+
+        found_id = found_room.Id.IntegerValue
+        current_id = room.Id.IntegerValue
+
+        if found_id == current_id:
+            return "outside"  # Zelfde room, waarschijnlijk buitenwand
+
+        return str(found_id)  # Adjacent room gevonden
+
+    except Exception:
+        return "outside"  # Bij twijfel: outside (conservatief)
+
+
 # =========================================================================
 # Zone detectie
 # =========================================================================
@@ -2016,6 +2164,7 @@ def _detect_open_connections(empty_heights, z_min_m, z_max_m, direction):
         })
 
     return connections
+
 
 
 # =========================================================================
@@ -2244,9 +2393,22 @@ def _collect_openings_from_boundary_walls(doc, room, face_normal, z_min_m,
                         )
                         p_revit_type_name = _get_opening_type_name(panel, wall_doc)
 
+                        # Bug G taak 4: Filter binnendeuren in curtain panels ook
+                        panel_wall_terminal = _determine_wall_terminal_type(
+                            wall, wall_doc, doc, room, face_normal, view3d
+                        )
+
+                        if panel_wall_terminal != "outside" and panel_type == "door":
+                            if DEBUG_OPENINGS:
+                                print("      panel {} DROP binnendeur terminal={}".format(
+                                    panel_int_id, panel_wall_terminal
+                                ))
+                            continue
+
                         if DEBUG_OPENINGS:
-                            print("      panel {} KEEP type={} dims={}x{}".format(
-                                panel_int_id, panel_type, p_width_mm, p_height_mm
+                            terminal_suffix = " (buitendeur)" if panel_wall_terminal == "outside" else " (terminal={})".format(panel_wall_terminal)
+                            print("      panel {} KEEP type={} dims={}x{}{}".format(
+                                panel_int_id, panel_type, p_width_mm, p_height_mm, terminal_suffix
                             ))
 
                         openings.append({
@@ -2305,9 +2467,24 @@ def _collect_openings_from_boundary_walls(doc, room, face_normal, z_min_m,
             # Type name voor thermal JSON builder
             revit_type_name = _get_opening_type_name(element, wall_doc)
 
+            # Bug G taak 4: Filter binnendeuren - alleen openings naar outside
+            # Bepaal of deze opening naar buiten gaat of naar een andere room
+            wall_terminal = _determine_wall_terminal_type(
+                wall, wall_doc, doc, room, face_normal, view3d
+            )
+
+            if wall_terminal != "outside" and opening_type == "door":
+                # Binnendeur naar adjacent room - skip
+                if DEBUG_OPENINGS:
+                    print("    insert {} DROP binnendeur terminal={}".format(
+                        element_id_int, wall_terminal
+                    ))
+                continue
+
             if DEBUG_OPENINGS:
-                print("    insert {} KEEP type={} dims={}x{}".format(
-                    element_id_int, opening_type, width_mm, height_mm
+                terminal_suffix = " (buitendeur)" if wall_terminal == "outside" else " (terminal={})".format(wall_terminal)
+                print("    insert {} KEEP type={} dims={}x{}{}".format(
+                    element_id_int, opening_type, width_mm, height_mm, terminal_suffix
                 ))
 
             openings.append({
@@ -2367,10 +2544,13 @@ def _find_boundary_walls_for_face(doc, room, face_normal, z_min_m, z_max_m):
                     if element is None:
                         continue
 
-                    # Check of het een Wall is
+                    # Skip Room Separation Lines - deze worden apart behandeld
+                    # als open_connections in de hoofd-loop
                     if element.Category is None:
                         continue
                     cat_id = element.Category.Id.IntegerValue
+                    if cat_id == -2000200:  # OST_RoomSeparationLines
+                        continue
                     if cat_id != -2000011:  # OST_Walls
                         continue
 
