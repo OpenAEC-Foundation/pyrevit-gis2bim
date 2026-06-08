@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 3 juni 2026*
+*Laatste update: 8 juni 2026*
 
 ---
 
@@ -39,6 +39,19 @@
 - [ ] `KozijnstaatGlasTag` / `KozijnstaatWindowTag` workset-aware maken (idem als Create) — annotaties moeten ook in workset `kozijnstaat`
 - [ ] Bij Create-output een waarschuwing tonen wanneer 1 type meerdere `sparing_type`-varianten heeft in het model (first-wins-flag)
 - [ ] Pyrevit Routes API stabiliteit — valt soms uit na heavy `execute_revit_code` calls; herstartrecept documenteren
+
+---
+
+## Deurstaat (8 juni 2026 — gedeelde core met Kozijnstaat, getest in Revit: Create/Config/Aantallen OK, Maatvoeren gefixt)
+
+> Nieuw `Deurstaat.panel` als deuren-variant (OST_Doors) op de gedeelde Kozijnstaat-core. Architectuur: `lib/kozijnstaat/config.py` profiel-aware (`load_config("kozijn"|"deur")`, eigen `user_config_deur.json`), `family_collector` collect-functies met `category`-param, deur-knoppen als dunne shims via `lib/kozijnstaat/shim.py` (`run("deur")`). GlasTag bewust niet gedupliceerd (raam-specifiek).
+
+- [ ] **Verticale deur-maatvoering** — family `32_DO_binnenkozijn_woning` heeft GEEN named Sill/Head reference planes (`GetReferenceByName` → None). `detail_v_refs`/`main_v_refs` staan daarom leeg. Fix: in de deur-family head- + sill-planes een **naam + Is Reference** geven, dan namen in `DEUR_OVERRIDES` zetten.
+- [ ] **Deur-defaults verifiëren per project** — `param_merk="deurmerk"` en `kozijn_tag_family="31_TAG_de_deurstaat_door"` zijn placeholders; echte 3BM-deur-tag-family + merk-parameter bevestigen.
+- [ ] **Spellingsinconsistentie in family** — `sponing_links` (1 n) vs `sponning_rechts` (2 n) in `32_DO_binnenkozijn_woning`; bij family-cleanup gelijktrekken + `detail_h_refs` mee-updaten.
+- [ ] Deur-Legend (POC) + Rename in Revit testen met deur-profiel (alleen Create/Config/Aantallen/Maatvoeren bevestigd).
+- [ ] Eigen iconen voor `DeurstaatRename` / `DeurstaatLegend` (nu geen icoon, net als kozijn-equivalent).
+- [ ] Latente bug opgemerkt: 4x-`dirname` sys.path in oude Kozijnstaat-knoppen wijst naar `extensions/` i.p.v. de extension-root; werkt alleen omdat pyRevit `lib/` auto-toevoegt. Bij refactor rechttrekken (deur-shims gebruiken al correcte 3x).
 
 ---
 

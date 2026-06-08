@@ -80,12 +80,15 @@ def _build_new_name(old_name, w_mm, h_mm):
     return (new_name, u"")
 
 
-def run():
+def run(profile="kozijn"):
     doc = revit.doc
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Rename Types")
 
-    cfg = load_config()
+    cfg = load_config(profile)
+    tool_label = cfg.get("tool_label", "Kozijnstaat")
+    category = cfg.get("element_category")
+    output.print_md("## {0} - Rename Types".format(tool_label))
+
     kozijn_family = cfg.get("kozijn_family", "31_kozijn")
     output.print_md(
         "Filter: family-naam bevat **'{0}'**".format(kozijn_family)
@@ -94,6 +97,7 @@ def run():
     # Geen sort-param: pure collect, geen volgorde-eisen voor rename.
     symbols = collect_window_symbols(
         doc, name_contains=kozijn_family, merk_param=u"",
+        category=category,
     )
     if not symbols:
         forms.alert(

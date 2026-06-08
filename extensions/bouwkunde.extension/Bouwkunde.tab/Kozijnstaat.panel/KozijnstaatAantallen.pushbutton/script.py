@@ -76,12 +76,15 @@ def _ensure_param(symbol, param_name, type_name, output):
     return p
 
 
-def run():
+def run(profile="kozijn"):
     doc = revit.doc
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Aantallen Tellen")
 
-    cfg = load_config()
+    cfg = load_config(profile)
+    tool_label = cfg.get("tool_label", "Kozijnstaat")
+    category = cfg.get("element_category")
+    output.print_md("## {0} - Aantallen Tellen".format(tool_label))
+
     name_filter = cfg.get("name_filter_contains") or ""
     p_aantal = cfg.get("param_aantal", "aantal_getekend")
     p_gespiegeld = cfg.get("param_aantal_gespiegeld", "aantal_gespiegeld")
@@ -98,7 +101,9 @@ def run():
     )
 
     # 1. Verzamel instances
-    instances = collect_window_instances(doc, name_contains=name_filter)
+    instances = collect_window_instances(
+        doc, name_contains=name_filter, category=category,
+    )
     if not instances:
         forms.alert(
             "Geen kozijnen gevonden met filter '{0}'.\n"

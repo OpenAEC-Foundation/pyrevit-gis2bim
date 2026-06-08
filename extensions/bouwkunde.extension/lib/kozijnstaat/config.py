@@ -12,6 +12,16 @@ CONFIG_DIR = os.path.dirname(__file__)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "user_config.json")
 
 DEFAULTS = {
+    # Element-categorie waarin de tool zoekt. "OST_Windows" voor de
+    # kozijnstaat, "OST_Doors" voor de deurstaat. Wordt door
+    # family_collector.resolve_category() omgezet naar BuiltInCategory.
+    "element_category": "OST_Windows",
+
+    # UI-label voor output-titels en dialogen ("Kozijnstaat"/"Deurstaat").
+    "tool_label": "Kozijnstaat",
+    # Enkelvoud van het element, voor veld-labels ("Kozijn"/"Deur").
+    "element_label": "Kozijn",
+
     # Family namen — 3BM-conventie 2025: "31_"-prefix, "_v4" suffix.
     # Per project override-baar via user_config.json in deze lib-dir.
     "kozijn_family": "31_kozijn",
@@ -105,12 +115,87 @@ DEFAULTS = {
 }
 
 
-def load_config():
-    """Laad config - merged defaults + user overrides."""
-    cfg = dict(DEFAULTS)
-    if os.path.isfile(CONFIG_FILE):
+# ---------------------------------------------------------------------------
+# Profielen — kozijnstaat (Windows) en deurstaat (Doors) delen dezelfde
+# lib. Per profiel een eigen DEFAULTS-set en een eigen user-config-file,
+# zodat de profielen elkaars overrides niet overschrijven.
+#
+# DEUR_OVERRIDES bevat ALLEEN de keys die voor deuren afwijken. Family-
+# namen, tag-family en maatvoering-references zijn PLACEHOLDERS — de
+# gebruiker zet de juiste 3BM-deurconventie via de Deurstaat-Config UI.
+# ---------------------------------------------------------------------------
+
+DEUR_OVERRIDES = {
+    "element_category": "OST_Doors",
+    "tool_label": "Deurstaat",
+    "element_label": "Deur",
+    "kozijn_family": "31_deur",        # placeholder — via Config zetten
+    "name_filter_contains": "deur",
+    "glas_tag_family": "",             # deuren hebben geen glas-tag
+    "kozijn_tag_family": "31_TAG_de_deurstaat_door",  # placeholder
+    "kozijnstaat_workset_name": "deurstaat",
+    "param_merk": "deurmerk",          # placeholder — via Config zetten
+    # Maatvoering — named references van de 3BM-deurfamily
+    # "32_DO_binnenkozijn_woning", geordend LINKS -> RECHTS zodat de
+    # maatketen klopt. LET OP de spelling in de family: "sponing_links"
+    # (1 n) vs "sponning_rechts" (2 n). Deze family heeft GEEN named
+    # verticale references (Sill/Head bestaan niet), dus verticale
+    # maatvoering staat uit tot de family promoted head/sill-planes heeft.
+    "detail_h_refs": [
+        "Left",
+        "sponing_links", "dagmaat links",
+        "dagmaat rechts", "sponning_rechts",
+        "Right",
+    ],
+    "detail_v_refs": [],
+    "main_h_refs": ["Left", "Right"],
+    "main_v_refs": [],
+}
+
+
+def _build_profile_defaults(overrides):
+    """DEFAULTS-kopie met profiel-overrides erover."""
+    d = dict(DEFAULTS)
+    d.update(overrides)
+    return d
+
+
+PROFILES = {
+    "kozijn": {
+        "defaults": dict(DEFAULTS),
+        "config_file": os.path.join(CONFIG_DIR, "user_config.json"),
+    },
+    "deur": {
+        "defaults": _build_profile_defaults(DEUR_OVERRIDES),
+        "config_file": os.path.join(CONFIG_DIR, "user_config_deur.json"),
+    },
+}
+
+DEFAULT_PROFILE = "kozijn"
+
+
+def _profile(profile):
+    """Resolve profielnaam naar de profiel-dict (fallback kozijn)."""
+    return PROFILES.get(profile or DEFAULT_PROFILE, PROFILES[DEFAULT_PROFILE])
+
+
+def profile_defaults(profile=DEFAULT_PROFILE):
+    """Defaults-set (zonder user-overrides) voor een profiel."""
+    return dict(_profile(profile)["defaults"])
+
+
+def load_config(profile=DEFAULT_PROFILE):
+    """Laad config - merged profiel-defaults + user overrides.
+
+    Args:
+        profile: "kozijn" (default, backward-compat) of "deur".
+    """
+    prof = _profile(profile)
+    cfg = dict(prof["defaults"])
+    config_file = prof["config_file"]
+    if os.path.isfile(config_file):
         try:
-            f = open(CONFIG_FILE, "r")
+            f = open(config_file, "r")
             try:
                 user = json.load(f)
             finally:
@@ -122,25 +207,29 @@ def load_config():
     return cfg
 
 
-def save_config(cfg):
-    """Sla config op naar user_config.json.
+def save_config(cfg, profile=DEFAULT_PROFILE):
+    """Sla config op naar het user-config-file van het profiel.
 
-    Slaat alleen keys op die afwijken van DEFAULTS om de file klein
-    te houden en future default-wijzigingen door te laten werken.
+    Slaat alleen keys op die afwijken van de profiel-defaults om de
+    file klein te houden en future default-wijzigingen door te laten
+    werken.
     """
+    prof = _profile(profile)
+    defaults = prof["defaults"]
     diff = {}
     for k, v in cfg.items():
-        if k not in DEFAULTS or DEFAULTS[k] != v:
+        if k not in defaults or defaults[k] != v:
             diff[k] = v
 
-    f = open(CONFIG_FILE, "w")
+    f = open(prof["config_file"], "w")
     try:
         json.dump(diff, f, indent=2, ensure_ascii=False)
     finally:
         f.close()
 
 
-def reset_config():
-    """Verwijder user_config.json zodat defaults weer gelden."""
-    if os.path.isfile(CONFIG_FILE):
-        os.remove(CONFIG_FILE)
+def reset_config(profile=DEFAULT_PROFILE):
+    """Verwijder het user-config-file zodat profiel-defaults weer gelden."""
+    config_file = _profile(profile)["config_file"]
+    if os.path.isfile(config_file):
+        os.remove(config_file)

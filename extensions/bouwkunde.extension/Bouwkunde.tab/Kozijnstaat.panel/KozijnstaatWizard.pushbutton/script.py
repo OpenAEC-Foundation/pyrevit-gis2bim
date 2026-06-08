@@ -26,14 +26,20 @@ if LIB_DIR not in sys.path:
 
 from pyrevit import revit, forms, script
 
+from kozijnstaat.config import load_config
 
-STEPS = [
-    ("Stap 1: Create", "KozijnstaatCreate.pushbutton"),
-    ("Stap 2: Maatvoeren", "KozijnstaatMaatvoering.pushbutton"),
-    ("Stap 3: Glas taggen", "KozijnstaatGlasTag.pushbutton"),
-    ("Stap 4: Window taggen", "KozijnstaatWindowTag.pushbutton"),
-    ("Stap 5: Aantallen tellen", "KozijnstaatAantallen.pushbutton"),
-]
+
+# Glas-taggen is raam-specifiek; voor het deur-profiel valt die stap weg.
+def _steps_for_profile(profile):
+    steps = [
+        ("Stap: Create", "KozijnstaatCreate.pushbutton"),
+        ("Stap: Maatvoeren", "KozijnstaatMaatvoering.pushbutton"),
+    ]
+    if profile != "deur":
+        steps.append(("Stap: Glas taggen", "KozijnstaatGlasTag.pushbutton"))
+    steps.append(("Stap: Taggen", "KozijnstaatWindowTag.pushbutton"))
+    steps.append(("Stap: Aantallen tellen", "KozijnstaatAantallen.pushbutton"))
+    return steps
 
 
 def _load_step(folder_name):
@@ -45,17 +51,19 @@ def _load_step(folder_name):
     return imp.load_source(mod_name, script_path)
 
 
-def run():
+def run(profile="kozijn"):
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Wizard")
+    tool_label = load_config(profile).get("tool_label", "Kozijnstaat")
+    steps = _steps_for_profile(profile)
+    output.print_md("## {0} - Wizard".format(tool_label))
     output.print_md(
         "Doorloopt **{0}** stappen. Bevestig per stap Uitvoeren / "
-        "Skip / Stop.".format(len(STEPS))
+        "Skip / Stop.".format(len(steps))
     )
 
     executed = []
     skipped = []
-    for label, folder in STEPS:
+    for label, folder in steps:
         output.print_md("---")
         output.print_md("### {0}".format(label))
 
@@ -79,7 +87,7 @@ def run():
             continue
 
         try:
-            mod.run()
+            mod.run(profile)
             executed.append(label)
         except Exception as ex:
             output.print_md(

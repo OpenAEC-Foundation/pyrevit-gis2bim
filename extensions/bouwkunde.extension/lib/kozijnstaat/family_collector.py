@@ -81,8 +81,24 @@ def _name(symbol):
         return ""
 
 
-def collect_window_symbols(doc, name_contains=None, merk_param="merk"):
-    """Alle FamilySymbols in categorie Windows.
+def resolve_category(category):
+    """Zet een category-spec om naar een BuiltInCategory enum.
+
+    Accepteert:
+        None   -> default BuiltInCategory.OST_Windows (backward-compat)
+        str    -> naam van een BuiltInCategory, bv. "OST_Doors"
+        enum   -> al-resolved BuiltInCategory (onveranderd terug)
+    """
+    if category is None:
+        return BuiltInCategory.OST_Windows
+    if isinstance(category, basestring):
+        return getattr(BuiltInCategory, category)
+    return category
+
+
+def collect_window_symbols(doc, name_contains=None, merk_param="merk",
+                           category=None):
+    """Alle FamilySymbols in de opgegeven categorie (default Windows).
 
     Args:
         doc: Revit Document
@@ -90,6 +106,8 @@ def collect_window_symbols(doc, name_contains=None, merk_param="merk"):
             Family.Name dit substring bevat (case-insensitive)
         merk_param: type-parameter waarop gesorteerd wordt (natural sort).
             Leeg/None = fallback op family-naam + type-naam.
+        category: None/str/BuiltInCategory — element-categorie. Default
+            None = OST_Windows. Geef "OST_Doors" voor de deurstaat.
 
     Returns:
         list[FamilySymbol] gesorteerd op (merk_param value, family-naam,
@@ -97,7 +115,7 @@ def collect_window_symbols(doc, name_contains=None, merk_param="merk"):
     """
     symbols = (
         FilteredElementCollector(doc)
-        .OfCategory(BuiltInCategory.OST_Windows)
+        .OfCategory(resolve_category(category))
         .OfClass(FamilySymbol)
         .WhereElementIsElementType()
         .ToElements()
@@ -129,14 +147,17 @@ def collect_window_symbols(doc, name_contains=None, merk_param="merk"):
     return filtered
 
 
-def collect_window_instances(doc, name_contains=None, view_id=None):
-    """Alle FamilyInstances in Windows-categorie.
+def collect_window_instances(doc, name_contains=None, view_id=None,
+                             category=None):
+    """Alle FamilyInstances in de opgegeven categorie (default Windows).
 
     Args:
         doc: Revit Document
         name_contains: optioneel - alleen instances waarvan de
             Family.Name dit substring bevat (case-insensitive)
         view_id: optioneel - alleen in deze view zichtbaar
+        category: None/str/BuiltInCategory — element-categorie. Default
+            None = OST_Windows. Geef "OST_Doors" voor de deurstaat.
 
     Returns:
         list[FamilyInstance]
@@ -148,7 +169,7 @@ def collect_window_instances(doc, name_contains=None, view_id=None):
 
     instances = (
         collector
-        .OfCategory(BuiltInCategory.OST_Windows)
+        .OfCategory(resolve_category(category))
         .OfClass(FamilyInstance)
         .WhereElementIsNotElementType()
         .ToElements()
@@ -216,6 +237,80 @@ def find_workset_id_by_name(doc, name):
     return None
 
 
+def list_user_worksets(doc):
+    """Lijst van namen van alle UserWorksets in het document.
+
+    Returns:
+        list[str] gesorteerd op naam, of lege lijst bij niet-workshared
+        document / fout.
+    """
+    try:
+        from Autodesk.Revit.DB import (
+            FilteredWorksetCollector, WorksetKind,
+        )
+    except Exception:
+        return []
+    try:
+        wsc = FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+    except Exception:
+        return []
+    names = []
+    for ws in wsc:
+        try:
+            names.append(ws.Name)
+        except Exception:
+            continue
+    names.sort()
+    return names
+
+
+def create_workset(doc, name):
+    """Maak een nieuwe UserWorkset aan (binnen een Transaction).
+
+    Vereist een workshared document. Als de workset al bestaat wordt de
+    bestaande id teruggegeven (geen duplicaat).
+
+    Returns:
+        tuple (id_int_of_None, message). id_int = nieuwe/bestaande
+        Workset.Id.IntegerValue, of None bij fout. message beschrijft het
+        resultaat voor de gebruiker.
+    """
+    if not name:
+        return (None, u"Geen worksetnaam opgegeven.")
+    try:
+        if not doc.IsWorkshared:
+            return (
+                None,
+                u"Document is niet workshared — worksets kunnen niet "
+                u"aangemaakt worden.",
+            )
+    except Exception:
+        return (None, u"Kan workshared-status niet bepalen.")
+
+    existing = find_workset_id_by_name(doc, name)
+    if existing is not None:
+        return (existing, u"Workset '{0}' bestaat al.".format(name))
+
+    try:
+        from Autodesk.Revit.DB import Workset, Transaction
+    except Exception:
+        return (None, u"Revit API niet beschikbaar.")
+
+    t = Transaction(doc, "Maak workset '{0}'".format(name))
+    try:
+        t.Start()
+        ws = Workset.Create(doc, name)
+        t.Commit()
+        return (int(ws.Id.IntegerValue), u"Workset '{0}' aangemaakt.".format(name))
+    except Exception as ex:
+        try:
+            if t.HasStarted() and not t.HasEnded():
+                t.RollBack()
+        except Exception:
+            pass
+        return (None, u"Aanmaken mislukt: {0}".format(ex))
+
+
 def _instance_workset_id(inst):
     """Lees de workset-id (int) van een instance via ELEM_PARTITION_PARAM."""
     try:
@@ -228,7 +323,8 @@ def _instance_workset_id(inst):
     return None
 
 
-def find_first_instance_per_symbol(doc, symbols, exclude_workset_id=None):
+def find_first_instance_per_symbol(doc, symbols, exclude_workset_id=None,
+                                   category=None):
     """Voor elke FamilySymbol de eerst-gevonden FamilyInstance in doc.
 
     Wordt door KozijnstaatCreate gebruikt om instance-parameters
@@ -261,7 +357,7 @@ def find_first_instance_per_symbol(doc, symbols, exclude_workset_id=None):
 
     instances = (
         FilteredElementCollector(doc)
-        .OfCategory(BuiltInCategory.OST_Windows)
+        .OfCategory(resolve_category(category))
         .OfClass(FamilyInstance)
         .WhereElementIsNotElementType()
         .ToElements()

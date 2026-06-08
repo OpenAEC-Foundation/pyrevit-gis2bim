@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - Status
 
-*Laatste update: 31 mei 2026*
+*Laatste update: 8 juni 2026*
 
 ---
 
@@ -30,6 +30,10 @@
 | MatExp | Materialen | WinForms | Stabiel | Materiaal export |
 | MatImp | Materialen | WinForms | Stabiel | Materiaal import |
 | MCPStatus | Test | **WPF** | Stabiel | MCP Server status (WPF referentie) |
+| Kozijnstaat (8 knoppen) | Kozijnstaat | WinForms | Stabiel | Kozijnstaat-canvas: Create/Config/Aantallen/Maatvoeren/Tag/Glas/Legend/Rename/Wizard. Workset-selector + workset-aanmaak in Config |
+| Deurstaat (8 knoppen) | Deurstaat | WinForms | **Nieuw** | Deuren-variant (OST_Doors) via gedeelde core + profiel "deur"; shims naar Kozijnstaat-logica. Maatvoering met echte deur-refs (`32_DO_binnenkozijn_woning`) |
+
+> **Kozijnstaat/Deurstaat gedeelde core (8 juni 2026):** `lib/kozijnstaat/` is nu profiel-aware (`load_config("kozijn"|"deur")`, eigen config-file per profiel, `element_category`). `family_collector` collect-functies nemen een `category`-param. Deurstaat-knoppen zijn dunne shims (`lib/kozijnstaat/shim.py`) die de Kozijnstaat-logica met `profile="deur"` draaien — geen code-duplicatie. GlasTag blijft raam-specifiek.
 
 ### GIS2BIM.extension (11 tools)
 

@@ -48,13 +48,16 @@ DETAIL_V_OFFSET_MM = 150.0    # detail-maat: 150 mm links van het kozijn
 MAIN_V_OFFSET_MM = 250.0      # totaal-maat: 100 mm links van detail
 
 
-def run():
+def run(profile="kozijn"):
     doc = revit.doc
     view = doc.ActiveView
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Maatvoering")
 
-    cfg = load_config()
+    cfg = load_config(profile)
+    tool_label = cfg.get("tool_label", "Kozijnstaat")
+    category = cfg.get("element_category")
+    output.print_md("## {0} - Maatvoering".format(tool_label))
+
     kozijn_family = cfg.get("kozijn_family", "3BM_kozijn")
     detail_h = list(cfg.get("detail_h_refs", []))
     detail_v = list(cfg.get("detail_v_refs", []))
@@ -62,7 +65,8 @@ def run():
     main_v = list(cfg.get("main_v_refs", []))
 
     instances = collect_window_instances(
-        doc, name_contains=kozijn_family, view_id=view.Id
+        doc, name_contains=kozijn_family, view_id=view.Id,
+        category=category,
     )
     if not instances:
         forms.alert(

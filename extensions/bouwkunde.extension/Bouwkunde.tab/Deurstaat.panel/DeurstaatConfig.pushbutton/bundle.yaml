@@ -1,0 +1,6 @@
+title: Config
+tooltip: >-
+  Bewerk de Deurstaat-instellingen (deur family-naam, naam-filter,
+  canvas-wall, parameters, workset, maatvoering-references). Opslag in
+  een eigen profiel los van de Kozijnstaat-config.
+author: 3BM Bouwkunde

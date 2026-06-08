@@ -1,0 +1,7 @@
+title: "Create\nDeurstaat"
+tooltip: >-
+  Plaatst alle unieke deur-types (categorie Doors) op een grid-layout.
+  Gebruikt een bestaande wand of genereert een canvas-wall. Deelt de
+  Kozijnstaat-logica via het deur-profiel.
+author: 3BM Bouwkunde
+highlight: new

@@ -374,22 +374,25 @@ def _wall_geometry(wall):
     return (origin, u_dir, length, height_ft)
 
 
-def run():
+def run(profile="kozijn"):
     _early_log("run() entered")
     doc = revit.doc
     uidoc = revit.uidoc
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Create")
+
+    cfg = load_config(profile)
+    tool_label = cfg.get("tool_label", "Kozijnstaat")
+    category = cfg.get("element_category")
+    output.print_md("## {0} - Create".format(tool_label))
     _early_log("got doc/uidoc/output")
 
-    klog.reset(header="KozijnstaatCreate run")
+    klog.reset(header="{0}Create run".format(tool_label))
     klog.info(u"=== START ===")
     _early_log("klog.reset done")
     output.print_md(
         "*Debug-log: `{0}`*".format(klog.get_log_path())
     )
 
-    cfg = load_config()
     kozijn_family = cfg.get("kozijn_family", "3BM_kozijn")
     merk_param = cfg.get("param_merk", "merk")
     instance_params_to_copy = cfg.get("instance_params_to_copy", []) or []
@@ -420,6 +423,7 @@ def run():
     # 1. Verzamel unieke types (gesorteerd op merk-param, dan family+type)
     symbols = collect_window_symbols(
         doc, name_contains=kozijn_family, merk_param=merk_param,
+        category=category,
     )
     if not symbols:
         forms.alert(
@@ -434,6 +438,7 @@ def run():
     # symbol — die hergebruiken we later voor instance-param copy.
     first_inst_per_symbol = find_first_instance_per_symbol(
         doc, symbols, exclude_workset_id=target_workset_id,
+        category=category,
     )
     if only_placed:
         before = len(symbols)

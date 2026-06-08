@@ -84,13 +84,16 @@ def _tag_location_below_kozijn(instance, view, v_offset_mm):
     )
 
 
-def run():
+def run(profile="kozijn"):
     doc = revit.doc
     view = doc.ActiveView
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Window Taggen")
 
-    cfg = load_config()
+    cfg = load_config(profile)
+    tool_label = cfg.get("tool_label", "Kozijnstaat")
+    category = cfg.get("element_category")
+    output.print_md("## {0} - Taggen".format(tool_label))
+
     kozijn_family = cfg.get("kozijn_family", "3BM_kozijn")
     tag_family = cfg.get(
         "kozijn_tag_family", "31_TAG_wi_kozijnstaat_window"
@@ -104,6 +107,7 @@ def run():
 
     instances = collect_window_instances(
         doc, name_contains=kozijn_family, view_id=view.Id,
+        category=category,
     )
     if not instances:
         forms.alert(

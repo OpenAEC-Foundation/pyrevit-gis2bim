@@ -1,0 +1,6 @@
+title: "Aantallen\nTellen"
+tooltip: >-
+  Telt deur-instances per type (parameters aantal_getekend +
+  aantal_gespiegeld), met de canvas-workset uitgesloten. Deelt de
+  Kozijnstaat-logica via het deur-profiel.
+author: 3BM Bouwkunde

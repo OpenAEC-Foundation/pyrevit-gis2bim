@@ -148,11 +148,10 @@ def _id_int(eid):
     return -1
 
 
-def run():
+def run(profile="kozijn"):
     doc = revit.doc
     uidoc = revit.uidoc
     output = script.get_output()
-    output.print_md("## Kozijnstaat - Legend (POC)")
 
     log.session("KozijnstaatLegend run")
     log.info(u"step 1: entry — doc.Title='{0}' active_view='{1}'".format(
@@ -165,12 +164,16 @@ def run():
 
     log.info(u"step 2: load_config()")
     try:
-        cfg = load_config()
+        cfg = load_config(profile)
         log.info(u"step 2 OK — config keys={0}".format(sorted(cfg.keys())))
     except Exception:
         log.exc(u"step 2 FAILED — load_config")
         forms.alert("Config laden mislukt — zie log.", title="Fout")
         return
+
+    tool_label = cfg.get("tool_label", "Kozijnstaat")
+    category = cfg.get("element_category")
+    output.print_md("## {0} - Legend (POC)".format(tool_label))
 
     kozijn_family = cfg.get("kozijn_family", "3BM_kozijn")
     merk_param = cfg.get("param_merk", "merk")
@@ -191,6 +194,7 @@ def run():
     try:
         symbols = collect_window_symbols(
             doc, name_contains=kozijn_family, merk_param=merk_param,
+            category=category,
         )
         log.info(u"step 4 OK — found {0} symbols".format(len(symbols)))
         for i, s in enumerate(symbols[:10]):

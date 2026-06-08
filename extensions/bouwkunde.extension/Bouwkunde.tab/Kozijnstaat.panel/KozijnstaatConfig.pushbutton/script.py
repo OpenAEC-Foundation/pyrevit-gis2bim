@@ -31,10 +31,15 @@ from System.Windows.Forms import (
 )
 from System.Drawing import Size
 
-from pyrevit import forms, script
+from pyrevit import forms, script, revit
 
 from ui_template import BaseForm, UIFactory, DPIScaler
 from kozijnstaat.config import load_config, save_config, reset_config
+from kozijnstaat.family_collector import (
+    list_user_worksets, create_workset,
+)
+
+doc = revit.doc
 
 
 def _refs_to_text(refs):
@@ -59,10 +64,12 @@ def _text_to_refs(text):
 class KozijnstaatConfigForm(BaseForm):
     """Config dialoog met tabs voor alle instellingen."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, profile="kozijn"):
         self.cfg = dict(cfg)
+        self.profile = profile
+        self.tool_label = cfg.get("tool_label", "Kozijnstaat")
         super(KozijnstaatConfigForm, self).__init__(
-            "Kozijnstaat - Config", 760, 640
+            "{0} - Config".format(self.tool_label), 760, 640
         )
         self.set_subtitle("Instellingen per project")
 
@@ -93,10 +100,14 @@ class KozijnstaatConfigForm(BaseForm):
         y = 10
         lw = 210
 
-        y = self._add_textbox(tab, y, lw, "Kozijn family-naam",
+        elem_label = self.cfg.get("element_label", "Kozijn")
+        y = self._add_textbox(tab, y, lw,
+                              "{0} family-naam".format(elem_label),
                               "kozijn_family", 300)
-        y = self._add_textbox(tab, y, lw, "Glas tag family-naam",
-                              "glas_tag_family", 300)
+        # Glas-tag is raam-specifiek — deuren hebben geen glasvlak-tag.
+        if self.profile != "deur":
+            y = self._add_textbox(tab, y, lw, "Glas tag family-naam",
+                                  "glas_tag_family", 300)
         y = self._add_textbox(tab, y, lw, "Naam-filter (bevat)",
                               "name_filter_contains", 200)
         y = self._add_textbox(tab, y, lw, "Canvas-wall Mark",
@@ -112,6 +123,11 @@ class KozijnstaatConfigForm(BaseForm):
         y = self._add_textbox(tab, y, lw,
                               "Parameter 'aantal_gespiegeld'",
                               "param_aantal_gespiegeld", 200)
+
+        y = self._add_workset_selector(
+            tab, y, lw, "Kozijnstaat-workset",
+            "kozijnstaat_workset_name",
+        )
 
     # ---- Tab 2: Layout ----
     def _build_tab_layout(self):
@@ -193,15 +209,70 @@ class KozijnstaatConfigForm(BaseForm):
         setattr(self, "txt_" + key, tb)
         return y + height + 20
 
+    def _add_workset_selector(self, tab, y, lw, label, key):
+        """Editable combobox met bestaande worksets + 'Maak aan'-knop.
+
+        De combobox is editable zodat de gebruiker ook een (nog niet
+        bestaande) naam kan typen. De knop maakt die workset aan in het
+        actieve document.
+        """
+        lbl = UIFactory.create_label(label)
+        lbl.Location = DPIScaler.scale_point(10, y + 4)
+        tab.Controls.Add(lbl)
+
+        worksets = []
+        try:
+            worksets = list_user_worksets(doc)
+        except Exception:
+            worksets = []
+
+        cmb = UIFactory.create_combobox(220, items=worksets, editable=True)
+        cmb.Location = DPIScaler.scale_point(lw, y)
+        cmb.Name = "cmb_" + key
+        cmb.Text = _safe_str(self.cfg.get(key, ""))
+        tab.Controls.Add(cmb)
+        setattr(self, "cmb_" + key, cmb)
+
+        btn = UIFactory.create_button("Maak aan", 110, 28, "secondary")
+        btn.Location = DPIScaler.scale_point(lw + 230, y)
+        btn.Click += self._on_create_workset
+        tab.Controls.Add(btn)
+
+        return y + 38
+
     # ---- Actions ----
+    def _on_create_workset(self, sender, args):
+        cmb = getattr(self, "cmb_kozijnstaat_workset_name", None)
+        if cmb is None:
+            return
+        name = (cmb.Text or "").strip()
+        if not name:
+            self.show_error("Geef eerst een worksetnaam op.")
+            return
+        try:
+            ws_id, msg = create_workset(doc, name)
+        except Exception as ex:
+            self.show_error("Fout bij aanmaken: {0}".format(ex))
+            return
+        forms.alert(msg, title="{0} Config".format(self.tool_label))
+        if ws_id is not None:
+            # Vernieuw de lijst zodat de nieuwe workset selecteerbaar is.
+            try:
+                cmb.Items.Clear()
+                for nm in list_user_worksets(doc):
+                    cmb.Items.Add(nm)
+                cmb.Text = name
+            except Exception:
+                pass
+
     def _on_save(self, sender, args):
         try:
             new_cfg = self._collect()
-            save_config(new_cfg)
+            save_config(new_cfg, self.profile)
             self.cfg = new_cfg
             forms.alert(
                 "Opgeslagen.",
-                title="Kozijnstaat Config",
+                title="{0} Config".format(self.tool_label),
             )
             self.Close()
         except Exception as ex:
@@ -212,9 +283,9 @@ class KozijnstaatConfigForm(BaseForm):
             "Alle user-overrides verwijderen en defaults herstellen?",
             yes=True, no=True,
         ):
-            reset_config()
+            reset_config(self.profile)
             forms.alert("Defaults hersteld. Open Config opnieuw.",
-                        title="Kozijnstaat Config")
+                        title="{0} Config".format(self.tool_label))
             self.Close()
 
     def _collect(self):
@@ -228,6 +299,11 @@ class KozijnstaatConfigForm(BaseForm):
             tb = getattr(self, "txt_" + key, None)
             if tb is not None:
                 c[key] = tb.Text.strip()
+
+        # Workset (editable combobox)
+        ws_cmb = getattr(self, "cmb_kozijnstaat_workset_name", None)
+        if ws_cmb is not None:
+            c["kozijnstaat_workset_name"] = (ws_cmb.Text or "").strip()
 
         # Optional string (level - leeg = None)
         lvl_tb = getattr(self, "txt_canvas_wall_level", None)
@@ -276,9 +352,9 @@ def _safe_float(text, default):
         return default
 
 
-def run():
-    cfg = load_config()
-    dlg = KozijnstaatConfigForm(cfg)
+def run(profile="kozijn"):
+    cfg = load_config(profile)
+    dlg = KozijnstaatConfigForm(cfg, profile)
     dlg.ShowDialog()
 
 

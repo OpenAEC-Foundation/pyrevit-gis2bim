@@ -103,13 +103,16 @@ def _collect_glass_elements(doc, view_id):
     return result
 
 
-def run():
+def run(profile="kozijn"):
+    # Glas-taggen is raam-specifiek; het profiel wordt geaccepteerd voor
+    # een uniforme run(profile)-signatuur (Wizard), maar de Glas-config
+    # leeft alleen in het kozijn-profiel.
     doc = revit.doc
     view = doc.ActiveView
     output = script.get_output()
     output.print_md("## Kozijnstaat - Glas Taggen")
 
-    cfg = load_config()
+    cfg = load_config(profile)
     tag_family = cfg.get("glas_tag_family", "GEN_glas_v3")
     h_offset_mm = float(cfg.get("glas_tag_h_offset_mm", H_OFFSET_MM))
     v_offset_mm = float(cfg.get("glas_tag_v_offset_mm", V_OFFSET_MM))
