@@ -214,6 +214,12 @@ def _build_rooms(rooms_data, scan_results, room_id_map):
         if elem_id is not None:
             room["revit_id"] = elem_id
 
+        # Zone-indeling (optioneel, uit Room-parameter ZONE_PARAM_NAME).
+        # Alleen exporteren als gevuld; pseudo-rooms krijgen geen zone.
+        zone = room_data.get("zone")
+        if zone:
+            room["zone"] = zone
+
         rooms.append(room)
 
     # Scan terminal conditions voor benodigde pseudo-rooms

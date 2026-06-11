@@ -129,6 +129,14 @@ WATER_MATERIAL_KEYWORDS = ["water", "meer", "rivier", "zee"]
 GROUND_MATERIAL_KEYWORDS = ["grond", "earth", "soil", "klei", "zand", "topo"]
 
 # =============================================================================
+# Zone-parameter
+# =============================================================================
+# Naam van de Room-parameter waaruit de zone-indeling gelezen wordt voor
+# open-heatloss-studio. Revit Rooms hebben geen built-in Zone-parameter;
+# dit is een project/shared parameter en dus instelbaar per kantoor-template.
+ZONE_PARAM_NAME = "Zone"
+
+# =============================================================================
 # Debug flags
 # =============================================================================
 DEBUG_OPENINGS = False            # Log opening detection per boundary wall

@@ -10,6 +10,7 @@ from Autodesk.Revit.DB import (
     BuiltInParameter,
 )
 
+from warmteverlies.constants import ZONE_PARAM_NAME
 from warmteverlies.unit_utils import (
     internal_to_sqm,
     internal_to_cubicm,
@@ -69,6 +70,7 @@ def collect_rooms(doc):
             "height_m": height_m,
             "is_heated": True,
             "function": None,
+            "zone": _get_room_zone(room),
         }
         rooms.append(room_data)
 
@@ -118,6 +120,30 @@ def _get_room_name(room):
         if name:
             return name
     return "Ruimte {0}".format(room.Id.IntegerValue)
+
+
+def _get_room_zone(room):
+    """Lees de zone-indeling uit de Room-parameter ZONE_PARAM_NAME.
+
+    De parameternaam is instelbaar in constants.py (default "Zone")
+    omdat kantoor-templates verschillen. Niet elke template heeft de
+    parameter; defensief lezen, nooit een exception laten lekken.
+
+    Returns:
+        str of None: Gestripte zone-waarde, of None als de parameter
+            ontbreekt, leeg is of niet leesbaar is.
+    """
+    try:
+        zone_param = room.LookupParameter(ZONE_PARAM_NAME)
+        if zone_param and zone_param.HasValue:
+            zone = zone_param.AsString()
+            if zone:
+                zone = zone.strip()
+                if zone:
+                    return zone
+    except Exception:
+        pass
+    return None
 
 
 def _get_room_number(room):
