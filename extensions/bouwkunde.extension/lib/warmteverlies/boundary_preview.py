@@ -3159,11 +3159,38 @@ def render_room_boundaries(doc, rooms, material_ids, params, output=None):
                 else:
                     # Verticaal
                     if not hosts:
-                        if hide_slivers:
-                            stats["slivers_hidden"] += 1
-                            continue
-                        mat_name = MAT_WALL[0]
-                        orient = "wall"
+                        # D7: curtain-walls/vliesgevels zijn vaak NIET Room
+                        # Bounding -> SEGC GetBoundaryFaceInfo geeft Count==0 ->
+                        # geen hosts. Voorheen viel dit vlak terug op een gele
+                        # 'wall' (of sliver), waardoor de glas-gevel als dichte
+                        # wand werd geexporteerd OF via de orphan-fallback met
+                        # 0 vertices. Probe daarom direct of er een curtain/glas-
+                        # paneel achter het room-boundary-vlak zit; zo ja ->
+                        # render als vliesgevel met echte face-vertices (komt uit
+                        # _face_to_vertices_json verderop, niet uit de panel-
+                        # geometrie zelf).
+                        cw_outer = _face_outer_loop(face)
+                        cw_centroid, cw_outward = _outward_normal_at_face(
+                            doc, room_eid, face, normal, cw_outer, room_phase
+                        )
+                        is_curtain_behind = False
+                        if cw_outward is not None:
+                            try:
+                                is_curtain_behind = _curtain_glass_behind_sampled(
+                                    doc, intersector, face, cw_outward
+                                )
+                            except Exception:
+                                is_curtain_behind = False
+
+                        if is_curtain_behind:
+                            mat_name = MAT_OPEN[0]
+                            orient = "vliesgevel"
+                        else:
+                            if hide_slivers:
+                                stats["slivers_hidden"] += 1
+                                continue
+                            mat_name = MAT_WALL[0]
+                            orient = "wall"
                     else:
                         # Check vliesgevel/glaswand onder de hosts
                         is_curtain = False

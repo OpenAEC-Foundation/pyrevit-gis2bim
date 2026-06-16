@@ -836,6 +836,15 @@ def build_catalog_thermal_import(doc, rooms_data, exported_at=None):
                 if orphan["sill_height_mm"] is not None:
                     opening["sill_height_mm"] = orphan["sill_height_mm"]
 
+                # D7: behoud geometrie-vertices ook op de fallback-gekoppelde
+                # opening. Voorheen werden orphan-vertices hier weggegooid
+                # waardoor curtain_wall-openings (open-NN) 0 vertices kregen en
+                # de 3D-viewer ze niet kon tekenen, ook al had de scanner ze
+                # wel geextraheerd.
+                orphan_vertices = orphan.get("vertices")
+                if orphan_vertices:
+                    opening["vertices"] = orphan_vertices
+
                 openings.append(opening)
 
     # ========================================
