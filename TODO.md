@@ -14,6 +14,17 @@
 
 ---
 
+## Vlakaanzicht — vliesgevel-support (17 juni 2026, WIP/ONGETEST)
+
+> Tool `Aanzichten.panel/Vlakaanzicht.pushbutton`: section loodrecht op gepickt vlak. Vliesgevel-pick (curtain-panel) cropte op één paneel i.p.v. de gevel. Crop-fix gecommit maar ongetest (actieve doc was family). Oriëntatie-bug nog open.
+
+- [ ] **Crop-fix testen** — open project met hellende vliesgevel → Reload → pick glaspaneel → check of hele gevel in crop zit. `_resolve_curtain_host` klimt via `.Host` naar de curtain wall; `_compute_section_box(use_face_extent=False)` cropt op host-bbox.
+- [ ] **Oriëntatie-bug (sloped section blijft recht)** — user: "tekent hem recht, niet onder de hoek van de slanted wall". Diagnostische logging staat klaar (`vlakaanzicht_debug.log`: `normal`, `frame bx/by/bz`, post-create `ViewDirection/UpDirection`). Bepaal verdachte A (normaal komt horizontaal uit paneel-face → fix: normaal uit host-wand exterior face) vs B (Revit snapt tilt naar verticaal → fix: alternatief view-aanmaakpad).
+- [ ] **Open vragen user**: over-crop bij sterk hellende gevel (host-bbox is wereld-AABB) acceptabel of strak op gevel-omtrek? Geknikte/gebogen gevel = echte ontvouwing/uitslag — apart traject, nu nodig?
+- [ ] Diagnostische `_log`-regels weer verwijderen/dempen zodra de bug gefixt is.
+
+---
+
 ## TrapTekenen / Trap 2D (24 mei 2026 — wachten op hertest in Revit)
 
 - [ ] Hertest in Revit met L-sparing na concave-fix (interior_in_dir/interior_out_dir uit polygon-CCW)

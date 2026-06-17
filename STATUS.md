@@ -14,6 +14,7 @@
 | VentilatieBalans | Bouwbesluit | WinForms | Stabiel | Ventilatiebalans per ruimtezone |
 | HellingbaanGenerator | Bouwbesluit | **WPF** | Stabiel | NEN 2443 hellingbanen met DirectShape |
 | TrapTekenen (Trap 2D) | Bouwbesluit | pyRevit forms | **WIP** | L-trap onderkwart 2D-plattegrond, 4 verdrijvingsmethoden, polygon-input (24 mei) |
+| Vlakaanzicht | Aanzichten | pyRevit forms | **WIP** | Section loodrecht op gepickt vlak (schuin dak/wand/vloer). Vliesgevel-crop-fix 17 juni (host-retarget) ongetest; sloped-section-oriëntatie-bug open |
 | WarmteverliesGrensvlakCheck | Bouwbesluit | **WPF** | Stabiel | Visuele SEGC-grensvlak-controle vóór warmteverlies-export, met shared params per vlak |
 | AutoDim | Maatvoering | **WPF** | Stabiel | Automatische maatvoering via Detail Lines |
 | CrossDim | Maatvoering | WinForms | Stabiel | Kruislings dimensioneren |

@@ -92,6 +92,14 @@ DEPTH_BEHIND_FT = 0.0164      # ~5 mm achter het vlak (dunne plak)
 DEPTH_FRONT_FT = 1.64042      # ~500 mm voor het vlak (richting kijker)
 HORIZONTAL_NORMAL_TOL = 0.001  # tolerantie voor "vrijwel horizontaal vlak"
 
+# Curtain-wall sub-categorieen: bij het picken van een vliesgevel kies je
+# een glaspaneel of stijl (los element). Voor de crop willen we de hele
+# gevel (host-wand), niet een enkel paneel.
+CURTAIN_SUB_BICS = (
+    BuiltInCategory.OST_CurtainWallPanels,
+    BuiltInCategory.OST_CurtainWallMullions,
+)
+
 
 # ---------------------------------------------------------------- helpers
 
@@ -138,6 +146,66 @@ def _category_label(elem):
     except Exception:
         pass
     return ""
+
+
+def _category_bic_matches(elem, bics):
+    """True als de categorie van elem matcht met een van de BuiltInCategory's.
+
+    Robuust tegen Revit 2024+ (ElementId.Value) en ouder (IntegerValue).
+    """
+    try:
+        cat = elem.Category
+    except Exception:
+        cat = None
+    if cat is None:
+        return False
+    try:
+        cid = cat.Id
+    except Exception:
+        return False
+    cid_int = None
+    for attr in ("Value", "IntegerValue"):
+        try:
+            v = getattr(cid, attr)
+            if callable(v):
+                v = v()
+            cid_int = int(v)
+            break
+        except Exception:
+            continue
+    if cid_int is None:
+        return False
+    for bic in bics:
+        try:
+            if cid_int == int(bic):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _resolve_curtain_host(elem):
+    """Geef de host-vliesgevel als elem een curtain-panel/stijl is, anders None.
+
+    Bij het picken van een vliesgevel selecteer je een glaspaneel of een
+    stijl/regel (mullion). Voor een correcte uitslag-crop hebben we de
+    host-wand nodig die het hele vlak omvat.
+    """
+    if not _category_bic_matches(elem, CURTAIN_SUB_BICS):
+        return None
+    host = None
+    try:
+        host = elem.Host
+    except Exception:
+        host = None
+    if host is None:
+        try:
+            sc = elem.SuperComponent
+            if sc is not None:
+                host = sc
+        except Exception:
+            host = None
+    return host
 
 
 def _unique_view_name(doc, base):
@@ -318,12 +386,17 @@ def _project_to_local(point, origin, bx, by, bz):
     return (d.DotProduct(bx), d.DotProduct(by), d.DotProduct(bz))
 
 
-def _compute_section_box(face, elem, center, bx, by, bz):
+def _compute_section_box(face, elem, center, bx, by, bz,
+                         use_face_extent=True):
     """Bouw een BoundingBoxXYZ in view-coordinaten.
 
     Combineert face-UV-corners en element-bbox-corners zodat het
     aanzicht het hele element pakt achter het vlak. Origin van de
     Transform = `center` (face-midden).
+
+    use_face_extent: True = strakke X/Y-crop op de gepickte face (default,
+    gewone wand/vloer). False = X/Y-crop op de element-bbox (vliesgevel:
+    de gepickte face is maar een paneel, de host-wand omvat de hele gevel).
     """
     pts = []
     fc = _face_bbox_corners_world(face)
@@ -343,21 +416,26 @@ def _compute_section_box(face, elem, center, bx, by, bz):
         ys.append(ly)
         zs.append(lz)
 
-    # X/Y: marge rond face (gebruik alleen face-corners voor strakke
-    # crop in-plane; element-bbox kan veel groter zijn).
-    if fc:
-        fc_xs, fc_ys = [], []
-        for p in fc:
-            lx, ly, lz = _project_to_local(p, center, bx, by, bz)
-            fc_xs.append(lx)
-            fc_ys.append(ly)
-        x_min = min(fc_xs) - MARGIN_FT
-        x_max = max(fc_xs) + MARGIN_FT
-        y_min = min(fc_ys) - MARGIN_FT
-        y_max = max(fc_ys) + MARGIN_FT
+    # X/Y-extent bepalen. Gewone wand/vloer: strakke crop op de gepickte
+    # face. Vliesgevel: face is maar een paneel -> gebruik de host-element-
+    # bbox zodat de hele gevel in beeld komt.
+    if use_face_extent and fc:
+        extent_pts = fc
+    elif ec:
+        extent_pts = ec
+    elif fc:
+        extent_pts = fc
     else:
-        x_min, x_max = min(xs) - MARGIN_FT, max(xs) + MARGIN_FT
-        y_min, y_max = min(ys) - MARGIN_FT, max(ys) + MARGIN_FT
+        extent_pts = pts
+    ex_xs, ex_ys = [], []
+    for p in extent_pts:
+        lx, ly, lz = _project_to_local(p, center, bx, by, bz)
+        ex_xs.append(lx)
+        ex_ys.append(ly)
+    x_min = min(ex_xs) - MARGIN_FT
+    x_max = max(ex_xs) + MARGIN_FT
+    y_min = min(ex_ys) - MARGIN_FT
+    y_max = max(ex_ys) + MARGIN_FT
 
     # Z-diepte: section box Z-as wijst naar kijker (positief +Z),
     # alles achter het vlak heeft negatieve Z. Element-bbox bepaalt
@@ -426,6 +504,16 @@ def run():
         _id_int(elem), elem_cat, is_planar,
     ))
 
+    # 2b. Vliesgevel: gepickt glaspaneel/stijl retargeten naar host-wand.
+    host = _resolve_curtain_host(elem)
+    is_curtain = host is not None and _id_int(host) != _id_int(elem)
+    extent_elem = host if is_curtain else elem
+    name_elem = host if is_curtain else elem
+    if is_curtain:
+        _log("curtain retarget: panel id={0} cat={1} -> host id={2}".format(
+            _id_int(elem), elem_cat, _id_int(host),
+        ))
+
     # 3. Center + normaal
     center, normal = _face_center_and_normal(face)
     if normal is None or normal.GetLength() < 1e-9:
@@ -435,9 +523,17 @@ def run():
         )
         return
 
+    _log("normal=({0:.4f},{1:.4f},{2:.4f}) center=({3:.3f},{4:.3f},{5:.3f})".format(
+        normal.X, normal.Y, normal.Z, center.X, center.Y, center.Z,
+    ))
+
     # 4. View frame
     try:
         bx, by, bz = _build_view_frame(normal)
+        _log("frame bx=({0:.4f},{1:.4f},{2:.4f}) by=({3:.4f},{4:.4f},{5:.4f}) "
+             "bz=({6:.4f},{7:.4f},{8:.4f})".format(
+                 bx.X, bx.Y, bx.Z, by.X, by.Y, by.Z, bz.X, bz.Y, bz.Z,
+             ))
     except Exception as ex:
         _log_exc("build_view_frame failed: {0}".format(ex))
         forms.alert(
@@ -446,8 +542,12 @@ def run():
         )
         return
 
-    # 5. Section box
-    section_box = _compute_section_box(face, elem, center, bx, by, bz)
+    # 5. Section box. Bij een vliesgevel cropt de host-bbox de hele gevel;
+    # bij gewone elementen blijft de strakke face-crop behouden.
+    section_box = _compute_section_box(
+        face, extent_elem, center, bx, by, bz,
+        use_face_extent=(not is_curtain),
+    )
 
     # 6. Template (optioneel)
     templates = _collect_section_templates(doc)
@@ -486,8 +586,21 @@ def run():
         if new_view is None:
             raise Exception("ViewSection.CreateSection gaf None terug")
 
+        try:
+            vd = new_view.ViewDirection
+            ud = new_view.UpDirection
+            rd = new_view.RightDirection
+            _log("view RESULT viewdir=({0:.4f},{1:.4f},{2:.4f}) "
+                 "updir=({3:.4f},{4:.4f},{5:.4f}) "
+                 "rightdir=({6:.4f},{7:.4f},{8:.4f})".format(
+                     vd.X, vd.Y, vd.Z, ud.X, ud.Y, ud.Z, rd.X, rd.Y, rd.Z,
+                 ))
+        except Exception as _ex:
+            _log("view RESULT dirs lezen mislukt: {0}".format(_ex))
+
+        name_cat = _category_label(name_elem)
         base_name = u"Vlakaanzicht {0} - id{1}".format(
-            elem_cat or elem_name, _id_int(elem),
+            name_cat or _name(name_elem) or elem_name, _id_int(name_elem),
         )
         try:
             new_view.Name = _unique_view_name(doc, base_name)
@@ -528,6 +641,13 @@ def run():
     output.print_md("- Element: **{0}** (id {1})".format(
         elem_cat or elem_name, _id_int(elem),
     ))
+    if is_curtain:
+        output.print_md(
+            "- Vliesgevel: gepickt paneel geretarget naar host-wand "
+            "**{0}** (id {1})".format(
+                _category_label(host) or _name(host), _id_int(host),
+            )
+        )
     output.print_md("- Vlak-type: **{0}**".format(
         "PlanarFace" if is_planar else type(face).__name__,
     ))
