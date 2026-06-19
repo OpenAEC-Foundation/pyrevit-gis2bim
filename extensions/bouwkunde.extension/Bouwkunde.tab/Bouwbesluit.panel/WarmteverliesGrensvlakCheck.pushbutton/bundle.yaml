@@ -1,4 +1,4 @@
-title: Grensvlak Check
+title: "Grensvlak\nCheck"
 tooltip: >-
   Render de SEGC-grensvlakken per ruimte als gekleurde DirectShapes
   (dak=rood, wand=geel, vloer=groen, openingen=blauw) in een 3D
