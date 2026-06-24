@@ -29,6 +29,23 @@ except ImportError:
     requests = None
 
 
+# PDOK Kadaster/IMGeo levert het 'hoek'-veld (o.a. OpenbareRuimteNaam) in
+# graden MET DE KLOK MEE vanaf de oost-as. Revit's RotateElement verwacht
+# graden TEGEN DE KLOK IN vanaf de oost-as. Conversie is dus een tekenflip:
+# rotatie = -hoek.
+#
+# Empirisch geverifieerd op 'Nieuwezijds Voorburgwal' (Amsterdam): twee
+# labelpunten geven straatrichting atan2(dy, dx) = +68.7 deg CCW, terwijl
+# hoek = -69.0 / -68.5. Dus straatrichting ~= -hoek.
+# (perceelnummerRotatie gebruikt een eigen conventie en blijft ongemoeid.)
+PDOK_HOEK_SIGN = -1.0
+
+
+def pdok_hoek_to_revit_deg(hoek_deg):
+    """Converteer PDOK 'hoek' (CW vanaf oost) naar Revit-rotatie (CCW vanaf oost)."""
+    return PDOK_HOEK_SIGN * float(hoek_deg)
+
+
 class WFSLayer(object):
     """
     Configuratie voor een WFS layer.
@@ -302,8 +319,10 @@ class WFSClient(object):
                         break
 
         # PDOK: hoek veld voor rotatie (straatnamen etc.)
+        # hoek = peiling (CW vanaf noord) -> Revit verwacht CCW vanaf oost.
         if "hoek" in props:
-            feature.label_rotation = float(props.get("hoek", 0))
+            feature.label_rotation = pdok_hoek_to_revit_deg(
+                props.get("hoek", 0))
 
 
 def get_wfs_data(layers, bbox, parallel=False):
