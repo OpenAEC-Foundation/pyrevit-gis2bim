@@ -1,0 +1,3 @@
+title: Opschonen
+tooltip: Verwijder geimporteerde GIS2BIM-data (rasterafbeeldingen, filled regions, detail lijnen, tekstnotities, detail groepen/componenten) over het hele document of de actieve view. Behoudt afbeeldingen met de prefix 'legend'.
+author: OpenAEC Foundation

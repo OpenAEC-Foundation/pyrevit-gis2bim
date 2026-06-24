@@ -1,0 +1,106 @@
+<DockPanel
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Header -->
+    <StackPanel DockPanel.Dock="Top" Background="{DynamicResource VioletBrush}">
+        <TextBlock Text="GIS2BIM Opschonen"
+                   FontSize="18" FontWeight="SemiBold"
+                   Foreground="White"
+                   Margin="20,16,20,4"/>
+        <TextBlock Text="Verwijder geimporteerde GIS-data om opnieuw op te bouwen"
+                   FontSize="12" FontWeight="Medium"
+                   Foreground="{DynamicResource TealBrush}"
+                   Margin="20,0,20,16"/>
+    </StackPanel>
+
+    <!-- Accent Line -->
+    <Rectangle DockPanel.Dock="Top" Height="3" Fill="{DynamicResource TealBrush}"/>
+
+    <!-- Footer -->
+    <Border DockPanel.Dock="Bottom"
+            BorderBrush="{DynamicResource MediumGrayBrush}"
+            BorderThickness="0,1,0,0"
+            Background="{DynamicResource LightGrayBrush}"
+            Padding="20,12">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="btn_cancel" Content="Annuleren"
+                    Style="{DynamicResource SecondaryButton}"
+                    Margin="0,0,8,0"/>
+            <Button x:Name="btn_execute" Content="Verwijderen"
+                    Style="{DynamicResource DangerButton}"/>
+        </StackPanel>
+    </Border>
+
+    <!-- Content -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+
+            <!-- Categorieen -->
+            <Border Background="{DynamicResource LightGrayBrush}"
+                    CornerRadius="4" Padding="16" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Wat verwijderen?"
+                               Style="{DynamicResource SectionHeader}"/>
+
+                    <CheckBox x:Name="chk_images" IsChecked="True"
+                              Style="{DynamicResource StandardCheckBox}"
+                              Content="Rasterafbeeldingen (behoud 'legend')"
+                              Margin="0,0,0,8"/>
+                    <CheckBox x:Name="chk_regions"
+                              Style="{DynamicResource StandardCheckBox}"
+                              Content="Filled regions"
+                              Margin="0,0,0,8"/>
+                    <CheckBox x:Name="chk_lines"
+                              Style="{DynamicResource StandardCheckBox}"
+                              Content="Detail lijnen"
+                              Margin="0,0,0,8"/>
+                    <CheckBox x:Name="chk_text"
+                              Style="{DynamicResource StandardCheckBox}"
+                              Content="Tekstnotities"
+                              Margin="0,0,0,8"/>
+                    <CheckBox x:Name="chk_detailgroups"
+                              Style="{DynamicResource StandardCheckBox}"
+                              Content="Detail groepen"
+                              Margin="0,0,0,8"/>
+                    <CheckBox x:Name="chk_detailcomp"
+                              Style="{DynamicResource StandardCheckBox}"
+                              Content="Detail componenten"
+                              Margin="0,0,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Scope -->
+            <Border Background="{DynamicResource LightGrayBrush}"
+                    CornerRadius="4" Padding="16" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Bereik"
+                               Style="{DynamicResource SectionHeader}"/>
+                    <RadioButton x:Name="rb_doc" GroupName="scope"
+                                 IsChecked="True"
+                                 Content="Hele document"
+                                 FontSize="13" Margin="0,0,0,6"/>
+                    <RadioButton x:Name="rb_view" GroupName="scope"
+                                 Content="Alleen actieve view"
+                                 FontSize="13" Margin="0,0,0,0"/>
+                    <TextBlock Text="Rasterafbeeldingen zijn project-breed en negeren het bereik."
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Waarschuwing -->
+            <Border BorderBrush="{DynamicResource PeachBrush}"
+                    BorderThickness="1" CornerRadius="4" Padding="12">
+                <TextBlock TextWrapping="Wrap"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Text="Let op: dit verwijdert ALLE gekozen elementen binnen het bereik, niet alleen GIS2BIM-import. Ongedaan maken kan via Revit-undo (Ctrl+Z)."/>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</DockPanel>
