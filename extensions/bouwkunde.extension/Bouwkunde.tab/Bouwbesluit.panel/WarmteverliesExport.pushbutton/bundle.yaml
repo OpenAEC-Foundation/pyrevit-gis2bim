@@ -1,4 +1,4 @@
-title: Catalogus Export
+title: "Catalogus\nExport"
 tooltip: >-
   Exporteer de bouwkundige catalogus (constructies, openingen, ruimtes)
   naar een ThermalImport JSON (v1.1, met geometrie) voor open-heatloss-studio
