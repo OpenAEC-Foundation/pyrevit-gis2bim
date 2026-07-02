@@ -46,6 +46,26 @@ from gis2bim.ui.progress_panel import show_progress, hide_progress, update_ui
 
 log = get_logger("WFS")
 
+# Default selecties in de dialog (3BM template-namen).
+# Bestaat de naam niet in het project, dan valt de dropdown
+# terug op de bestaande default (actieve view / <Thin Lines> / eerste item).
+DEFAULT_VIEW_NAME = "GIS2BIM_kadaster"
+DEFAULT_LINE_STYLE = "kadastrale_grens"
+DEFAULT_FILLED_REGION = "MLA_DP_90_pand"
+DEFAULT_TEXT_TYPE = "3BM_2mm"
+
+
+def select_combo_item_by_name(combo, name):
+    """Selecteer een ComboBoxItem op Content-naam. Returns True bij match."""
+    try:
+        for i in range(combo.Items.Count):
+            if combo.Items[i].Content == name:
+                combo.SelectedIndex = i
+                return True
+    except Exception as e:
+        log("Error combo default '{0}': {1}".format(name, e))
+    return False
+
 # GIS2BIM modules
 GIS2BIM_LOADED = False
 IMPORT_ERROR = ""
@@ -98,6 +118,7 @@ class WFSWindow(Window):
 
         self.location_rd = setup_project_location(self, doc, log)
         populate_view_dropdown(self.cmb_view, doc, log=log)
+        select_combo_item_by_name(self.cmb_view, DEFAULT_VIEW_NAME)
         self._setup_styles()
         self._bind_events()
 
@@ -125,8 +146,9 @@ class WFSWindow(Window):
                 if name == "<Thin Lines>":
                     default_line_idx = i
 
-            if self.cmb_line_style.Items.Count > 0:
-                self.cmb_line_style.SelectedIndex = default_line_idx
+            if not select_combo_item_by_name(self.cmb_line_style, DEFAULT_LINE_STYLE):
+                if self.cmb_line_style.Items.Count > 0:
+                    self.cmb_line_style.SelectedIndex = default_line_idx
 
         except Exception as e:
             log("Error lijnstijlen: {0}".format(e))
@@ -151,8 +173,9 @@ class WFSWindow(Window):
                 item.Tag = frt
                 self.cmb_filled_type.Items.Add(item)
 
-            if self.cmb_filled_type.Items.Count > 0:
-                self.cmb_filled_type.SelectedIndex = 0
+            if not select_combo_item_by_name(self.cmb_filled_type, DEFAULT_FILLED_REGION):
+                if self.cmb_filled_type.Items.Count > 0:
+                    self.cmb_filled_type.SelectedIndex = 0
 
         except Exception as e:
             log("Error filled region types: {0}".format(e))
@@ -177,8 +200,9 @@ class WFSWindow(Window):
                 item.Tag = tt
                 self.cmb_text_type.Items.Add(item)
 
-            if self.cmb_text_type.Items.Count > 0:
-                self.cmb_text_type.SelectedIndex = 0
+            if not select_combo_item_by_name(self.cmb_text_type, DEFAULT_TEXT_TYPE):
+                if self.cmb_text_type.Items.Count > 0:
+                    self.cmb_text_type.SelectedIndex = 0
 
         except Exception as e:
             log("Error tekst types: {0}".format(e))

@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - Status
 
-*Laatste update: 8 juni 2026*
+*Laatste update: 2 juli 2026*
 
 ---
 
@@ -41,7 +41,7 @@
 | Tool | Panel | Status | Beschrijving |
 |------|-------|--------|--------------|
 | Locatie | Setup | Voltooid | Adres/postcode invoer, PDOK geocoding, Revit site locatie |
-| WFS | Data | Voltooid | Kadaster percelen, BAG huisnummers, gebouwen via PDOK WFS 2.0 |
+| WFS | Data | Voltooid | Kadaster percelen, BAG huisnummers, gebouwen via PDOK WFS 2.0. 3BM-defaults (2 juli): 200×200m, view `GIS2BIM_kadaster`, lijnstijl `kadastrale_grens`, filled region `MLA_DP_90_pand`, tekst `3BM_2mm` — met fallback als naam ontbreekt |
 | BGT | Data | Voltooid | Basisregistratie Grootschalige Topografie (19 lagen, holes/donuts) |
 | AHN | Data | Actief | Hoogte data als TopographySurface (WCS/LAZ), texture scale validatie nodig |
 | BAG3D | Data | Voltooid | 3D gebouwen uit 3DBAG als DirectShape (OBJ mesh import) |

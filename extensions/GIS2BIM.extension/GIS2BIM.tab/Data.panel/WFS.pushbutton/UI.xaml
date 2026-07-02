@@ -131,8 +131,8 @@
                                Margin="0,0,12,0"/>
                     <ComboBox x:Name="cmb_bbox_size" Width="120" Padding="8,6">
                         <ComboBoxItem Content="50 x 50 m" Tag="50"/>
-                        <ComboBoxItem Content="100 x 100 m" Tag="100" IsSelected="True"/>
-                        <ComboBoxItem Content="200 x 200 m" Tag="200"/>
+                        <ComboBoxItem Content="100 x 100 m" Tag="100"/>
+                        <ComboBoxItem Content="200 x 200 m" Tag="200" IsSelected="True"/>
                         <ComboBoxItem Content="500 x 500 m" Tag="500"/>
                     </ComboBox>
                 </StackPanel>
