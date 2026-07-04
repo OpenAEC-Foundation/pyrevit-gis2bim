@@ -36,7 +36,7 @@
 
 > **Kozijnstaat/Deurstaat gedeelde core (8 juni 2026):** `lib/kozijnstaat/` is nu profiel-aware (`load_config("kozijn"|"deur")`, eigen config-file per profiel, `element_category`). `family_collector` collect-functies nemen een `category`-param. Deurstaat-knoppen zijn dunne shims (`lib/kozijnstaat/shim.py`) die de Kozijnstaat-logica met `profile="deur"` draaien — geen code-duplicatie. GlasTag blijft raam-specifiek.
 
-### GIS2BIM.extension (11 tools)
+### GIS2BIM.extension (12 tools)
 
 | Tool | Panel | Status | Beschrijving |
 |------|-------|--------|--------------|
@@ -47,6 +47,7 @@
 | BAG3D | Data | Voltooid | 3D gebouwen uit 3DBAG als DirectShape (OBJ mesh import) |
 | Mesh3D | Data | Nieuw | 3D mesh import (OBJ/GLB), Google 3D Tiles (EEA-beperkt) |
 | NAPPeilmerken | Data | Voltooid | NAP peilmerken |
+| RegelsOpDeKaart | Data | **Nieuw** | Geldende regels op projectlocatie uit DSO-LV (Ozon Presenteren API v8, bron van Omgevingsloket "Regels op de kaart"). Vereist DSO API-key. Live-test pending (4 juli) |
 | WMS | Kaarten | Actief | Web Map Service kaarten op sheet |
 | LuchtfotoTijdreis | Kaarten | Actief | PDOK luchtfoto's tijdreeks op sheet (3x2 grid) |
 | KaartTijdreis | Kaarten | Todo | Historische kaarten tijdreeks |

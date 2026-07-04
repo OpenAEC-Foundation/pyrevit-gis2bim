@@ -1,6 +1,19 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 2 juli 2026*
+*Laatste update: 4 juli 2026*
+
+---
+
+## Regels op de kaart / DSO (4 juli 2026 — nieuw, live-test pending)
+
+> Nieuwe tool `GIS2BIM.tab/Data.panel/RegelsOpDeKaart.pushbutton` + client `lib/gis2bim/api/dso.py` (Ozon Presenteren API v8). Smoke-test tegen productie-API gedaan met dummy-key (endpoint/TLS/headers/foutafhandeling OK). API-key is aangevraagd maar nog niet binnen.
+
+- [ ] **Live-test zodra DSO API-key binnen is** — key invoeren via de tool-prompt (opslag in `%APPDATA%\GIS2BIM\config.json` onder `dso_api_key`; omgeving via `dso_environment`: `prod`/`pre`)
+- [ ] **Responseveld-namen verifiëren tegen echte data** — parsing is defensief (`_first`/`_als_tekst`), maar `citeerTitel`/`type`/`aangeleverdDoorEen` en de `_embedded`-resourcenamen zijn nog niet tegen een echte response gecheckt
+- [ ] **Artikeltekst ophalen** — nu alleen annotaties (kruimelpad/wId); volledige tekst via `get_documentstructuur(regeling, documentComponent=wId)` tonen of exporteren
+- [ ] **Rapportkoppeling** — JSON-export (`%TEMP%\3bm_exchange\dso_regels_op_locatie.json`) doorzetten naar BM Reports ("geldende regels voor deze locatie" PDF)
+- [ ] **Werkingsgebieden tekenen** — geometrieën van werkingsgebieden als filled regions (via Omgevingsdocumenten geometrie opvragen API), zelfde patroon als WFS-tool
+- [ ] Icoon voor de pushbutton
 
 ---
 

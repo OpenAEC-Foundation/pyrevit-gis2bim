@@ -90,6 +90,12 @@ from .natura2000 import (
     Natura2000Result,
 )
 
+from .dso import (
+    DSOClient,
+    DSOAPIError,
+    normalize_identificatie,
+)
+
 from .bro import (
     BROClient,
     CPTData,
