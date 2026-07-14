@@ -1,6 +1,17 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 4 juli 2026*
+*Laatste update: 14 juli 2026*
+
+---
+
+## Ventilatievoud / Ventilatie Tabel (14 juli 2026 — nieuw, Revit-test pending)
+
+> Nieuwe tool `Bouwkunde.tab/Bouwbesluit.panel/Ventilatievoud.pushbutton`: ventilatieberekening voor de bouwaanvraag (Bbl afd. 4.3, nieuwbouw woonfunctie) met Ducoton 10 'ZR' glasroosters (10,2 dm³/s per m¹ bij 1 Pa, geverifieerd tegen Duco-datasheet). Type-detectie op ruimtenaam met override per rij, tekst-tabel via klikpunt op actieve view.
+
+- [ ] **Revit-test** — nieuwe knop → full cache-clear procedure (alle Revits dicht, `pyrevit caches clear --all`, herstart). Check: grid-vulling, type-combobox override, roosterlengtes, plaatsing TextNote met `3BM_2mm`
+- [ ] **Kolomuitlijning controleren** met het `3BM_2mm` teksttype (niet-monospace font → kolommen kunnen verlopen; evt. monospace 3BM-teksttype aanmaken in template)
+- [ ] Ventilatievoud-kolom verifiëren in project met volumeberekening aan (Areas & Volumes)
+- [ ] Evt. spuiventilatie (art. 4.126) als extra kolom/regel toevoegen
 
 ---
 

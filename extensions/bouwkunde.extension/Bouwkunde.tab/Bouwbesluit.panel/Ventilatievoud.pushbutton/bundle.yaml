@@ -1,0 +1,11 @@
+title: "Ventilatie\nTabel"
+tooltip: |
+  Ventilatieberekening voor de bouwaanvraag (Bbl afd. 4.3).
+
+  - Leest alle ruimtes uit het actieve model
+  - Berekent eis per ruimte: verblijfsruimte 0,9 dm3/s per m2 (min. 7),
+    keuken 21 / badruimte 14 / toiletruimte 7 dm3/s afvoer
+  - Bepaalt benodigde lengte Ducoton 10 'ZR' glasroosters (10,2 dm3/s per m1 bij 1 Pa)
+  - Plaatst het resultaat als tekst-tabel op de actieve view (klikpunt)
+author: 3BM Bouwkunde
+highlight: new
