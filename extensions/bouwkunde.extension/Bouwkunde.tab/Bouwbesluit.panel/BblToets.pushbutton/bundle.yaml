@@ -1,0 +1,17 @@
+title: "Bbl\nToets"
+tooltip: |
+  Bbl-toets voor de bouwaanvraag (nieuwbouw woonfunctie).
+
+  Ventilatie (par. 4.3.5):
+  - Eis per ruimte: verblijfsruimte 0,9 dm3/s per m2 (min. 7),
+    keuken 21 / badruimte 14 / toiletruimte 7 dm3/s afvoer
+  - Benodigde lengte Ducoton 10 'ZR' glasroosters (10,2 dm3/s per m1 bij 1 Pa)
+
+  Daglicht (par. 4.3.7):
+  - Equivalente daglichtoppervlakte: 10% vloeroppervlak, min. 0,5 m2
+  - Aanwezig via ramen per ruimte (glasfactor x belemmeringsfactor),
+    handmatig corrigeerbaar per ruimte
+
+  Plaatst het resultaat als tekst-tabel op de actieve view (klikpunt).
+author: 3BM Bouwkunde
+highlight: new

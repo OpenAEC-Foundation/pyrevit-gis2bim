@@ -12,7 +12,7 @@
 |------|-------|--------------|--------|--------------|
 | RcBerekening | Bouwbesluit | WinForms | Stabiel | Rc/U-waarde + Glaser condensatie-analyse, PDF rapport |
 | VentilatieBalans | Bouwbesluit | WinForms | Stabiel | Ventilatiebalans per ruimtezone |
-| Ventilatievoud (Ventilatie Tabel) | Bouwbesluit | WinForms | **Nieuw** | Ventilatieberekening bouwaanvraag (Bbl afd. 4.3): eis per ruimte + Ducoton 10 'ZR' roosterlengtes, tekst-tabel als TextNote op view (default `3BM_2mm`), JSON naar `%TEMP%\3bm_exchange` (14 juli) |
+| BblToets (Bbl Toets) | Bouwbesluit | WinForms | **Nieuw** | Bbl-toets bouwaanvraag: ventilatie (§4.3.5, eis per ruimte + Ducoton 10 'ZR' roosterlengtes) + daglicht (§4.3.7, equivalente daglichtopp. 10%/0,5 m² met ramen per ruimte, OK/TEKORT-toets). Tekst-tabel als TextNote op view (default `3BM_2mm`), JSON naar `%TEMP%\3bm_exchange` (14 juli) |
 | HellingbaanGenerator | Bouwbesluit | **WPF** | Stabiel | NEN 2443 hellingbanen met DirectShape |
 | TrapTekenen (Trap 2D) | Bouwbesluit | pyRevit forms | **WIP** | L-trap onderkwart 2D-plattegrond, 4 verdrijvingsmethoden, polygon-input (24 mei) |
 | Vlakaanzicht | Aanzichten | pyRevit forms | **WIP** | Section loodrecht op gepickt vlak (schuin dak/wand/vloer). Vliesgevel-crop-fix 17 juni (host-retarget) ongetest; sloped-section-oriëntatie-bug open |
@@ -100,7 +100,7 @@ bouwkunde.extension/
 └── Bouwkunde.tab/
     ├── Afwerking.panel/        WandVloerAfwerking
     ├── Bibliotheek.panel/      DetailOverzicht
-    ├── Bouwbesluit.panel/      RcBerekening, VentilatieBalans, Ventilatievoud, HellingbaanGenerator
+    ├── Bouwbesluit.panel/      RcBerekening, VentilatieBalans, BblToets, HellingbaanGenerator
     ├── Data Exchange.panel/    ScheduleExport, ScheduleImport
     ├── Document.panel/         SheetParameters
     ├── Filter.panel/           FilterCreator

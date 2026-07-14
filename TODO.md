@@ -4,14 +4,15 @@
 
 ---
 
-## Ventilatievoud / Ventilatie Tabel (14 juli 2026 — nieuw, Revit-test pending)
+## BblToets / Bbl Toets (14 juli 2026 — nieuw, Revit-test pending)
 
-> Nieuwe tool `Bouwkunde.tab/Bouwbesluit.panel/Ventilatievoud.pushbutton`: ventilatieberekening voor de bouwaanvraag (Bbl afd. 4.3, nieuwbouw woonfunctie) met Ducoton 10 'ZR' glasroosters (10,2 dm³/s per m¹ bij 1 Pa, geverifieerd tegen Duco-datasheet). Type-detectie op ruimtenaam met override per rij, tekst-tabel via klikpunt op actieve view.
+> Nieuwe tool `Bouwkunde.tab/Bouwbesluit.panel/BblToets.pushbutton` (eerder Ventilatievoud, zelfde sessie uitgebreid): Bbl-toets voor de bouwaanvraag (nieuwbouw woonfunctie) met twee tabbladen. **Ventilatie** (§4.3.5): eis per ruimte + Ducoton 10 'ZR' roosterlengtes (10,2 dm³/s per m¹ bij 1 Pa, geverifieerd tegen Duco-datasheet). **Daglicht** (§4.3.7): equivalente daglichtopp. 10% vloeropp. min. 0,5 m², aanwezig via windows per ruimte (FromRoom/ToRoom, kozijnmaten cf. Kozijnstaat-conventie `kozijn_breedte`/`kozijn_hoogte`) × glasfactor × belemmeringsfactor, per rij handmatig te overrulen. Type-detectie op ruimtenaam met override, gecombineerde tekst-tabel via klikpunt op actieve view.
 
-- [ ] **Revit-test** — nieuwe knop → full cache-clear procedure (alle Revits dicht, `pyrevit caches clear --all`, herstart). Check: grid-vulling, type-combobox override, roosterlengtes, plaatsing TextNote met `3BM_2mm`
+- [ ] **Revit-test** — nieuwe knop → full cache-clear procedure (alle Revits dicht, `pyrevit caches clear --all`, herstart). Check: beide tabs, type-combobox override, roosterlengtes, Ae-override cel (komma-invoer), plaatsing TextNote met `3BM_2mm`
+- [ ] **Daglicht-koppeling verifiëren** — windows via FromRoom/ToRoom (laatste fase): kloppen aantallen ramen per ruimte? Dakramen/vliesgevels komen niet mee → handmatige Ae-override gebruiken
 - [ ] **Kolomuitlijning controleren** met het `3BM_2mm` teksttype (niet-monospace font → kolommen kunnen verlopen; evt. monospace 3BM-teksttype aanmaken in template)
 - [ ] Ventilatievoud-kolom verifiëren in project met volumeberekening aan (Areas & Volumes)
-- [ ] Evt. spuiventilatie (art. 4.126) als extra kolom/regel toevoegen
+- [ ] Evt. uitbreiden: spuiventilatie (§4.3.5), geluidwering, daglicht per verblijfsgebied i.p.v. per ruimte
 
 ---
 
