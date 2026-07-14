@@ -389,9 +389,11 @@ def koppel_ramen(ruimtes):
         return
     doc = revit.doc
 
-    # 1. Gemeten glas: alle FamilyInstances met 'glas' in de family-naam,
-    #    gesommeerd per root-instance (kozijn of los geplaatst paneel)
-    glas_per_root = {}
+    # 1. Gemeten glas: alle FamilyInstances met 'glas' in de family-naam.
+    #    Room bij voorkeur via het eigen room calculation point van de
+    #    glas-familie; terugval via het root-kozijn (SuperComponent-keten).
+    glas_roots = set()
+    glas_per_ruimte = {}
     for inst in DB.FilteredElementCollector(doc).OfClass(DB.FamilyInstance):
         try:
             fam_naam = inst.Symbol.Family.Name.lower()
@@ -403,18 +405,14 @@ def koppel_ramen(ruimtes):
         if opp <= 0:
             continue
         root = _root_instance(inst)
-        rid = root.Id.IntegerValue
-        if rid not in glas_per_root:
-            glas_per_root[rid] = {'root': root, 'opp': 0.0}
-        glas_per_root[rid]['opp'] += opp
-
-    glas_per_ruimte = {}
-    for info in glas_per_root.values():
-        room = _ruimte_van(info['root'], fase)
+        glas_roots.add(root.Id.IntegerValue)
+        room = _ruimte_van(inst, fase)
+        if room is None:
+            room = _ruimte_van(root, fase)
         if room is None:
             continue
         key = room.Id.IntegerValue
-        glas_per_ruimte[key] = glas_per_ruimte.get(key, 0.0) + info['opp']
+        glas_per_ruimte[key] = glas_per_ruimte.get(key, 0.0) + opp
 
     # 2. Kozijnen: aantal per ruimte + fallback-opp. voor kozijnen zonder glas
     aantal_per_ruimte = {}
@@ -428,7 +426,7 @@ def koppel_ramen(ruimtes):
             continue
         key = room.Id.IntegerValue
         aantal_per_ruimte[key] = aantal_per_ruimte.get(key, 0) + 1
-        if inst.Id.IntegerValue not in glas_per_root:
+        if inst.Id.IntegerValue not in glas_roots:
             fallback_per_ruimte[key] = fallback_per_ruimte.get(key, 0.0) + \
                 _raam_oppervlak_m2(inst)
 
