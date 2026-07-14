@@ -68,6 +68,12 @@ BELEMMERINGSFACTOR = 1.0    # Cb x Cu cf. NEN 2057 (default: vrije ligging)
 RAAM_BREEDTE_PARAMS = ('kozijn_breedte', 'Breedte', 'Width')
 RAAM_HOOGTE_PARAMS = ('kozijn_hoogte', 'Hoogte', 'Height')
 
+# Glaspanelen: face-based GM-families genest in kozijnen, herkend aan
+# 'glas' in de family-naam (zelfde conventie als KozijnstaatGlasTag)
+GLAS_KEYWORD = 'glas'
+GLAS_BREEDTE_PARAMS = ('glas_breedte', 'Breedte', 'Width')
+GLAS_HOOGTE_PARAMS = ('glas_hoogte', 'Hoogte', 'Height')
+
 DEFAULT_TEXT_TYPE = '3BM_2mm'
 
 FT_NAAR_M = 0.3048
@@ -158,7 +164,8 @@ class RuimteRij(object):
         self.voud = 0.0
         # daglicht
         self.raam_aantal = 0
-        self.raam_opp = 0.0        # bruto kozijnoppervlak in de ruimte [m2]
+        self.glas_opp = 0.0        # gemeten glasopp. uit glas-families [m2]
+        self.raam_opp = 0.0        # bruto opp. kozijnen zonder glas-familie [m2]
         self.ae_vereist = 0.0
         self.ae_aanwezig = 0.0
         self.ae_override = None    # handmatige correctie [m2]
@@ -234,7 +241,8 @@ class RuimteRij(object):
         if self.ae_override is not None:
             self.ae_aanwezig = round(self.ae_override, 2)
         else:
-            self.ae_aanwezig = round(self.raam_opp * glasfactor * belemmering, 2)
+            self.ae_aanwezig = round(
+                (self.glas_opp + self.raam_opp * glasfactor) * belemmering, 2)
         if self.ae_aanwezig >= self.ae_vereist - 0.005:
             self.daglicht_toets = 'OK'
         else:
@@ -302,6 +310,34 @@ def _raam_oppervlak_m2(inst):
     return (b * FT_NAAR_M) * (h * FT_NAAR_M)
 
 
+def _glas_oppervlak_m2(inst):
+    """Oppervlak van een glas-familie-instance in m2 (params, anders bbox)."""
+    symbool = None
+    try:
+        symbool = inst.Symbol
+    except Exception:
+        pass
+    b = _lees_lengte_ft(inst, GLAS_BREEDTE_PARAMS, None)
+    if b <= 0:
+        b = _lees_lengte_ft(symbool, GLAS_BREEDTE_PARAMS, None)
+    h = _lees_lengte_ft(inst, GLAS_HOOGTE_PARAMS, None)
+    if h <= 0:
+        h = _lees_lengte_ft(symbool, GLAS_HOOGTE_PARAMS, None)
+    if b > 0 and h > 0:
+        return (b * FT_NAAR_M) * (h * FT_NAAR_M)
+    # Fallback: bounding box, twee grootste afmetingen (dikte valt af)
+    try:
+        bbox = inst.get_BoundingBox(None)
+        if bbox:
+            dims = sorted([bbox.Max.X - bbox.Min.X,
+                           bbox.Max.Y - bbox.Min.Y,
+                           bbox.Max.Z - bbox.Min.Z], reverse=True)
+            return (dims[0] * FT_NAAR_M) * (dims[1] * FT_NAAR_M)
+    except Exception:
+        pass
+    return 0.0
+
+
 def _laatste_fase():
     """Laatste fase van het project (voor FromRoom/ToRoom-lookup)."""
     fasen = revit.doc.Phases
@@ -310,38 +346,96 @@ def _laatste_fase():
     return None
 
 
-def koppel_ramen(ruimtes):
-    """Koppel windows aan ruimtes via FromRoom/ToRoom (laatste fase).
+def _root_instance(inst):
+    """Klim via SuperComponent naar de bovenste host-familie (het kozijn)."""
+    top = inst
+    try:
+        while top.SuperComponent is not None:
+            top = top.SuperComponent
+    except Exception:
+        pass
+    return top
+
+
+def _ruimte_van(inst, fase):
+    """Room van een instance in de gegeven fase (ToRoom, anders FromRoom).
 
     Let op: ToRoom/FromRoom zijn indexed properties (per fase) - in
     IronPython altijd via get_ToRoom(fase) benaderen, nooit als attribuut.
     """
+    room = None
+    try:
+        room = inst.get_ToRoom(fase)
+    except Exception:
+        pass
+    if room is None:
+        try:
+            room = inst.get_FromRoom(fase)
+        except Exception:
+            pass
+    return room
+
+
+def koppel_ramen(ruimtes):
+    """Koppel kozijnen en glaspanelen aan ruimtes.
+
+    Glaspanelen zijn face-based GM-families (naam bevat 'glas') genest in
+    kozijnfamilies en hebben zelf geen room-relatie; de koppeling loopt via
+    het root-kozijn (SuperComponent-keten). Kozijnen zonder gemeten glas
+    vallen terug op bruto kozijnoppervlak x glasfactor.
+    """
     fase = _laatste_fase()
     if fase is None:
         return
-    per_ruimte = {}
-    collector = DB.FilteredElementCollector(revit.doc)\
+    doc = revit.doc
+
+    # 1. Gemeten glas: alle FamilyInstances met 'glas' in de family-naam,
+    #    gesommeerd per root-instance (kozijn of los geplaatst paneel)
+    glas_per_root = {}
+    for inst in DB.FilteredElementCollector(doc).OfClass(DB.FamilyInstance):
+        try:
+            fam_naam = inst.Symbol.Family.Name.lower()
+        except Exception:
+            continue
+        if GLAS_KEYWORD not in fam_naam and 'glass' not in fam_naam:
+            continue
+        opp = _glas_oppervlak_m2(inst)
+        if opp <= 0:
+            continue
+        root = _root_instance(inst)
+        rid = root.Id.IntegerValue
+        if rid not in glas_per_root:
+            glas_per_root[rid] = {'root': root, 'opp': 0.0}
+        glas_per_root[rid]['opp'] += opp
+
+    glas_per_ruimte = {}
+    for info in glas_per_root.values():
+        room = _ruimte_van(info['root'], fase)
+        if room is None:
+            continue
+        key = room.Id.IntegerValue
+        glas_per_ruimte[key] = glas_per_ruimte.get(key, 0.0) + info['opp']
+
+    # 2. Kozijnen: aantal per ruimte + fallback-opp. voor kozijnen zonder glas
+    aantal_per_ruimte = {}
+    fallback_per_ruimte = {}
+    collector = DB.FilteredElementCollector(doc)\
         .OfCategory(DB.BuiltInCategory.OST_Windows)\
         .WhereElementIsNotElementType()
     for inst in collector:
-        room = None
-        try:
-            room = inst.get_ToRoom(fase)
-        except Exception:
-            pass
-        if room is None:
-            try:
-                room = inst.get_FromRoom(fase)
-            except Exception:
-                pass
+        room = _ruimte_van(inst, fase)
         if room is None:
             continue
-        rid = room.Id.IntegerValue
-        per_ruimte.setdefault(rid, []).append(_raam_oppervlak_m2(inst))
+        key = room.Id.IntegerValue
+        aantal_per_ruimte[key] = aantal_per_ruimte.get(key, 0) + 1
+        if inst.Id.IntegerValue not in glas_per_root:
+            fallback_per_ruimte[key] = fallback_per_ruimte.get(key, 0.0) + \
+                _raam_oppervlak_m2(inst)
+
     for r in ruimtes:
-        opps = per_ruimte.get(r.element_id, [])
-        r.raam_aantal = len(opps)
-        r.raam_opp = sum(opps)
+        r.raam_aantal = aantal_per_ruimte.get(r.element_id, 0)
+        r.glas_opp = glas_per_ruimte.get(r.element_id, 0.0)
+        r.raam_opp = fallback_per_ruimte.get(r.element_id, 0.0)
 
 
 def laad_teksttypes():
@@ -450,8 +544,9 @@ def bouw_tabel_tekst(ruimtes, instellingen, toon_zonder_eis):
         ROOSTER_AFRONDING_MM, ROOSTER_MAX_MM))
     regels.append(u"- Daglicht cf. NEN 2057: vereist Ae = 10% vloeroppervlak, "
                   u"min. {} m2 per verblijfsruimte".format(nl_getal(DAGLICHT_MIN_M2)))
-    regels.append(u"- Aanwezig Ae = kozijnoppervlak x glasfactor {} x belemmeringsfactor "
-                  u"CbxCu {}  (* = handmatig)".format(
+    regels.append(u"- Aanwezig Ae = gemeten glasoppervlak (glas-families in kozijnen); "
+                  u"kozijnen zonder glas-familie: kozijnopp. x glasfactor {}. "
+                  u"Totaal x belemmeringsfactor CbxCu {}  (* = handmatig)".format(
         nl_getal(instellingen['glasfactor'], 2), nl_getal(instellingen['belemmering'], 2)))
     regels.append(u"- Spuiventilatie (Bbl par. 4.3.5) buiten beschouwing")
     return u"\n".join(regels)
@@ -481,7 +576,8 @@ def schrijf_exchange_json(ruimtes, instellingen):
                 'rooster_aantal': r.rooster_aantal,
                 'ventilatievoud_per_h': r.voud,
                 'raam_aantal': r.raam_aantal,
-                'raam_opp_m2': round(r.raam_opp, 2),
+                'glas_opp_m2': round(r.glas_opp, 2),
+                'kozijn_fallback_m2': round(r.raam_opp, 2),
                 'ae_vereist_m2': r.ae_vereist,
                 'ae_aanwezig_m2': r.ae_aanwezig,
                 'ae_handmatig': r.ae_override is not None,
@@ -781,9 +877,10 @@ class BblToetsForm(Form):
         self._tekst_kolom(grid, "niveau", "Verdieping", 95)
         self._tekst_kolom(grid, "opp", "m²", 55)
         self._tekst_kolom(grid, "type", "Type", 110)
-        self._tekst_kolom(grid, "vereist", "Vereist Ae [m²]", 95)
-        self._tekst_kolom(grid, "ramen", "Ramen", 55)
-        self._tekst_kolom(grid, "raamopp", "Kozijnopp. [m²]", 95)
+        self._tekst_kolom(grid, "vereist", "Vereist Ae [m²]", 90)
+        self._tekst_kolom(grid, "ramen", "Ramen", 50)
+        self._tekst_kolom(grid, "glasopp", "Glas [m²]", 70)
+        self._tekst_kolom(grid, "raamopp", "Kozijn z. glas [m²]", 95)
         self._tekst_kolom(grid, "aanwezig", "Aanwezig Ae [m²]", 100, readonly=False)
         self._tekst_kolom(grid, "toets", "Toets", 110)
 
@@ -826,6 +923,7 @@ class BblToetsForm(Form):
                     r.nummer, r.naam, r.niveau, nl_getal(r.opp), r.type_key,
                     nl_getal(r.ae_vereist, 2) if r.ae_vereist > 0 else "-",
                     str(r.raam_aantal) if r.raam_aantal > 0 else "-",
+                    nl_getal(r.glas_opp, 2) if r.glas_opp > 0 else "-",
                     nl_getal(r.raam_opp, 2) if r.raam_opp > 0 else "-",
                     aanwezig,
                     r.daglicht_toets)
