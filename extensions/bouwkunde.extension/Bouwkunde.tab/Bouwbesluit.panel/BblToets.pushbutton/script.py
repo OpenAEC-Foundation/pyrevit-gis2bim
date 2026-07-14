@@ -338,12 +338,29 @@ def _glas_oppervlak_m2(inst):
     return 0.0
 
 
-def _laatste_fase():
-    """Laatste fase van het project (voor FromRoom/ToRoom-lookup)."""
+def _fasen_met_rooms():
+    """Fasen waarin geplaatste rooms bestaan, laatste fase eerst.
+
+    Rooms bestaan alleen in hun eigen fase; de laatste projectfase
+    (bv. 'As Built') bevat vaak geen rooms. Daarom zoeken we per
+    instance in alle fasen die rooms hebben, van laat naar vroeg.
+    """
+    fase_ids = set()
+    collector = DB.FilteredElementCollector(revit.doc)\
+        .OfCategory(DB.BuiltInCategory.OST_Rooms)\
+        .WhereElementIsNotElementType()
+    for room in collector:
+        if room.Area > 0:
+            p = room.get_Parameter(DB.BuiltInParameter.ROOM_PHASE)
+            if p and p.HasValue:
+                fase_ids.add(p.AsElementId().IntegerValue)
     fasen = revit.doc.Phases
-    if fasen and fasen.Size > 0:
-        return fasen.get_Item(fasen.Size - 1)
-    return None
+    resultaat = []
+    for i in range(fasen.Size - 1, -1, -1):
+        f = fasen.get_Item(i)
+        if f.Id.IntegerValue in fase_ids:
+            resultaat.append(f)
+    return resultaat
 
 
 def _root_instance(inst):
@@ -357,23 +374,38 @@ def _root_instance(inst):
     return top
 
 
-def _ruimte_van(inst, fase):
-    """Room van een instance in de gegeven fase (ToRoom, anders FromRoom).
+def _ruimte_van(inst, fasen):
+    """Room van een instance: RCP-punt eerst, daarna ToRoom/FromRoom per fase.
 
+    Voor geneste (shared) families geeft get_ToRoom/get_FromRoom None,
+    ook met een actief Room Calculation Point. Daarom eerst het RCP-punt
+    opvragen en via doc.GetRoomAtPoint(punt, fase) koppelen.
     Let op: ToRoom/FromRoom zijn indexed properties (per fase) - in
     IronPython altijd via get_ToRoom(fase) benaderen, nooit als attribuut.
     """
-    room = None
     try:
-        room = inst.get_ToRoom(fase)
+        if inst.HasSpatialElementCalculationPoint:
+            punt = inst.GetSpatialElementCalculationPoint()
+            for fase in fasen:
+                room = revit.doc.GetRoomAtPoint(punt, fase)
+                if room is not None:
+                    return room
     except Exception:
         pass
-    if room is None:
+    for fase in fasen:
         try:
-            room = inst.get_FromRoom(fase)
+            room = inst.get_ToRoom(fase)
+            if room is not None:
+                return room
         except Exception:
             pass
-    return room
+        try:
+            room = inst.get_FromRoom(fase)
+            if room is not None:
+                return room
+        except Exception:
+            pass
+    return None
 
 
 def koppel_ramen(ruimtes):
@@ -384,8 +416,8 @@ def koppel_ramen(ruimtes):
     het root-kozijn (SuperComponent-keten). Kozijnen zonder gemeten glas
     vallen terug op bruto kozijnoppervlak x glasfactor.
     """
-    fase = _laatste_fase()
-    if fase is None:
+    fasen = _fasen_met_rooms()
+    if not fasen:
         return
     doc = revit.doc
 
@@ -406,9 +438,9 @@ def koppel_ramen(ruimtes):
             continue
         root = _root_instance(inst)
         glas_roots.add(root.Id.IntegerValue)
-        room = _ruimte_van(inst, fase)
+        room = _ruimte_van(inst, fasen)
         if room is None:
-            room = _ruimte_van(root, fase)
+            room = _ruimte_van(root, fasen)
         if room is None:
             continue
         key = room.Id.IntegerValue
@@ -421,7 +453,7 @@ def koppel_ramen(ruimtes):
         .OfCategory(DB.BuiltInCategory.OST_Windows)\
         .WhereElementIsNotElementType()
     for inst in collector:
-        room = _ruimte_van(inst, fase)
+        room = _ruimte_van(inst, fasen)
         if room is None:
             continue
         key = room.Id.IntegerValue
