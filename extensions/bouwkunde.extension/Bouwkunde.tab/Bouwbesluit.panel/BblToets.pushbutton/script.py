@@ -302,8 +302,23 @@ def _raam_oppervlak_m2(inst):
     return (b * FT_NAAR_M) * (h * FT_NAAR_M)
 
 
+def _laatste_fase():
+    """Laatste fase van het project (voor FromRoom/ToRoom-lookup)."""
+    fasen = revit.doc.Phases
+    if fasen and fasen.Size > 0:
+        return fasen.get_Item(fasen.Size - 1)
+    return None
+
+
 def koppel_ramen(ruimtes):
-    """Koppel windows aan ruimtes via FromRoom/ToRoom (laatste fase)."""
+    """Koppel windows aan ruimtes via FromRoom/ToRoom (laatste fase).
+
+    Let op: ToRoom/FromRoom zijn indexed properties (per fase) - in
+    IronPython altijd via get_ToRoom(fase) benaderen, nooit als attribuut.
+    """
+    fase = _laatste_fase()
+    if fase is None:
+        return
     per_ruimte = {}
     collector = DB.FilteredElementCollector(revit.doc)\
         .OfCategory(DB.BuiltInCategory.OST_Windows)\
@@ -311,12 +326,12 @@ def koppel_ramen(ruimtes):
     for inst in collector:
         room = None
         try:
-            room = inst.ToRoom
+            room = inst.get_ToRoom(fase)
         except Exception:
             pass
         if room is None:
             try:
-                room = inst.FromRoom
+                room = inst.get_FromRoom(fase)
             except Exception:
                 pass
         if room is None:
