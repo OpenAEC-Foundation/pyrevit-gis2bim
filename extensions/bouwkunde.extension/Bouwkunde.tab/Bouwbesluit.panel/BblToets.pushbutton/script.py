@@ -38,7 +38,8 @@ clr.AddReference('System.Drawing')
 
 from System.Windows.Forms import (
     Form, Label, Panel, DataGridView, DataGridViewTextBoxColumn,
-    DataGridViewComboBoxColumn, MessageBox, MessageBoxButtons,
+    DataGridViewComboBoxColumn, DataGridViewCheckBoxColumn,
+    MessageBox, MessageBoxButtons,
     MessageBoxIcon, FormStartPosition, BorderStyle, FlatStyle,
     DataGridViewAutoSizeColumnsMode, DataGridViewSelectionMode,
     NumericUpDown, AnchorStyles, AutoScaleMode, CheckBox,
@@ -149,6 +150,7 @@ class RuimteRij(object):
     def __init__(self, room):
         self.element = room
         self.element_id = room.Id.IntegerValue
+        self.geselecteerd = True
         self.naam = self._param_str(room, DB.BuiltInParameter.ROOM_NAME) or 'Naamloos'
         self.nummer = self._param_str(room, DB.BuiltInParameter.ROOM_NUMBER) or '-'
         self.niveau = self._level_naam(room)
@@ -480,68 +482,138 @@ def laad_teksttypes():
 
 
 # ==============================================================================
-# TABEL-TEKST
+# TABEL-TEKST (tab-uitlijning)
 # ==============================================================================
-def bouw_tabel_tekst(ruimtes, instellingen, toon_zonder_eis):
-    """Bouw de gecombineerde Bbl-toets-tabel (vaste kolombreedtes)."""
-    heeft_voud = any(r.voud > 0 for r in ruimtes)
-    zichtbaar = [r for r in ruimtes if r.heeft_eis or toon_zonder_eis]
+# Revit TextNotes lijnen tabs uit op vaste tab-stops (Tab Size van het
+# teksttype). Om per cel het juiste aantal tabs te bepalen schatten we de
+# gezette breedte van de tekst: em-breedtes per teken (Arial-benadering)
+# x teksthoogte x breedtefactor van het teksttype.
+_EM_BREEDTES = {
+    u'i': 0.222, u'j': 0.222, u'l': 0.222,
+    u'f': 0.278, u't': 0.278, u'r': 0.333,
+    u'I': 0.278, u'J': 0.5,
+    u'm': 0.833, u'M': 0.833, u'w': 0.722, u'W': 0.944,
+    u' ': 0.278, u'.': 0.278, u',': 0.278, u':': 0.278, u';': 0.278,
+    u'-': 0.333, u'/': 0.278, u'(': 0.333, u')': 0.333,
+    u'[': 0.278, u']': 0.278, u'*': 0.389, u'%': 0.889,
+}
+_EM_DEFAULT = 0.556
+_EM_HOOFDLETTER = 0.667
+_KOLOM_MARGE_MM = 2.5       # minimale witruimte tussen kolommen op papier
+_TAB_MM_FALLBACK = 10.0     # als het teksttype geen bruikbare Tab Size heeft
 
-    regels = []
-    regels.append(u"BBL-TOETS BOUWAANVRAAG")
-    regels.append(u"Project: {}   Datum: {}".format(
-        revit.doc.Title, date.today().strftime('%d-%m-%Y')))
-    regels.append(u"")
 
-    # -- 1. Ventilatie -------------------------------------------------------
-    kop = u"{:<5}{:<20}{:<12}{:>7}  {:>9}  {:<13}{:>9}".format(
-        "Nr", "Ruimte", "Verdieping", "Opp.", "Toevoer", "Rooster", "Afvoer")
-    kop2 = u"{:<5}{:<20}{:<12}{:>7}  {:>9}  {:<13}{:>9}".format(
-        "", "", "", "[m2]", "[dm3/s]", "Ducoton", "[dm3/s]")
+def _tekst_breedte_mm(tekst, hoogte_mm, breedtefactor):
+    """Geschatte gezette breedte van een regel tekst in mm (papier)."""
+    em = 0.0
+    for ch in tekst:
+        if ch in _EM_BREEDTES:
+            em += _EM_BREEDTES[ch]
+        elif ch.isupper():
+            em += _EM_HOOFDLETTER
+        else:
+            em += _EM_DEFAULT
+    return em * hoogte_mm * breedtefactor
+
+
+def _teksttype_maten(teksttype_id):
+    """(teksthoogte_mm, tab_mm, breedtefactor) van een TextNoteType."""
+    hoogte_mm = 2.0
+    tab_mm = _TAB_MM_FALLBACK
+    factor = 1.0
+    try:
+        tt = revit.doc.GetElement(teksttype_id)
+        p = tt.get_Parameter(DB.BuiltInParameter.TEXT_SIZE)
+        if p and p.HasValue:
+            hoogte_mm = p.AsDouble() * 304.8
+        p = tt.get_Parameter(DB.BuiltInParameter.TEXT_TAB_SIZE)
+        if p and p.HasValue and p.AsDouble() > 0:
+            tab_mm = p.AsDouble() * 304.8
+        p = tt.get_Parameter(DB.BuiltInParameter.TEXT_WIDTH_SCALE)
+        if p and p.HasValue and p.AsDouble() > 0:
+            factor = p.AsDouble()
+    except Exception as ex:
+        log.warning("Teksttype-maten niet gelezen: {}".format(ex))
+    return hoogte_mm, tab_mm, factor
+
+
+def _kolom_starts(rijen, tab_mm, hoogte_mm, factor):
+    """Tab-stop-index waarop elke kolom begint, op basis van celbreedtes."""
+    n = max(len(rij) for rij in rijen)
+    breedtes = [0.0] * n
+    for rij in rijen:
+        for i, cel in enumerate(rij):
+            b = _tekst_breedte_mm(cel, hoogte_mm, factor)
+            if b > breedtes[i]:
+                breedtes[i] = b
+    starts = [0]
+    pos_mm = 0.0
+    for i in range(1, n):
+        pos_mm += breedtes[i - 1] + _KOLOM_MARGE_MM
+        stop = int(math.ceil(pos_mm / tab_mm - 1e-6))
+        if stop <= starts[-1]:
+            stop = starts[-1] + 1
+        starts.append(stop)
+        pos_mm = stop * tab_mm
+    totaal_mm = starts[-1] * tab_mm + breedtes[-1]
+    return starts, totaal_mm
+
+
+def _tab_regel(cellen, starts, tab_mm, hoogte_mm, factor):
+    """Zet een rij cellen om naar een regel met het juiste aantal tabs."""
+    regel = cellen[0]
+    caret_mm = _tekst_breedte_mm(cellen[0], hoogte_mm, factor)
+    for i in range(1, len(cellen)):
+        huidige_stop = int(caret_mm / tab_mm + 1e-6)
+        tabs = starts[i] - huidige_stop
+        if tabs < 1:
+            tabs = 1
+        regel += u'\t' * tabs
+        caret_mm = (huidige_stop + tabs) * tab_mm
+        regel += cellen[i]
+        caret_mm += _tekst_breedte_mm(cellen[i], hoogte_mm, factor)
+    return regel
+
+
+def _scheidingslijn(totaal_mm, hoogte_mm, factor):
+    dash_mm = _EM_BREEDTES[u'-'] * hoogte_mm * factor
+    return u"-" * max(10, int(totaal_mm / dash_mm))
+
+
+def bouw_tabel_tekst(ruimtes, instellingen, toon_zonder_eis, teksttype_id):
+    """Bouw de gecombineerde Bbl-toets-tabel, uitgelijnd met tabs."""
+    actief = [r for r in ruimtes if r.geselecteerd]
+    heeft_voud = any(r.voud > 0 for r in actief)
+    zichtbaar = [r for r in actief if r.heeft_eis or toon_zonder_eis]
+    hoogte_mm, tab_mm, factor = _teksttype_maten(teksttype_id)
+
+    # -- 1. Ventilatie: rijen als cellen -------------------------------------
+    kop_v = [u"Nr", u"Ruimte", u"Verdieping", u"Opp.", u"Toevoer",
+             u"Rooster", u"Afvoer"]
+    kop_v2 = [u"", u"", u"", u"[m2]", u"[dm3/s]", u"Ducoton", u"[dm3/s]"]
     if heeft_voud:
-        kop += u"  {:>7}".format("Voud")
-        kop2 += u"  {:>7}".format("[1/h]")
-    breedte = max(len(kop), len(kop2))
-
-    regels.append(u"1. VENTILATIE (Bbl par. 4.3.5 - luchtverversing, nieuwbouw)")
-    regels.append(kop)
-    regels.append(kop2)
-    regels.append(u"-" * breedte)
-
+        kop_v.append(u"Voud")
+        kop_v2.append(u"[1/h]")
+    rijen_v = [kop_v, kop_v2]
     tot_toevoer = 0.0
     tot_afvoer = 0.0
     for r in zichtbaar:
         tot_toevoer += r.toevoer
         tot_afvoer += r.afvoer
-        regel = u"{:<5}{:<20}{:<12}{:>7}  {:>9}  {:<13}{:>9}".format(
-            r.nummer[:4],
-            r.naam[:19],
-            r.niveau[:11],
-            nl_getal(r.opp),
-            nl_getal(r.toevoer) if r.toevoer > 0 else u"-",
-            r.rooster_tekst,
-            nl_getal(r.afvoer) if r.afvoer > 0 else u"-")
+        rij = [r.nummer[:6], r.naam[:24], r.niveau[:14],
+               nl_getal(r.opp),
+               nl_getal(r.toevoer) if r.toevoer > 0 else u"-",
+               r.rooster_tekst,
+               nl_getal(r.afvoer) if r.afvoer > 0 else u"-"]
         if heeft_voud:
-            regel += u"  {:>7}".format(nl_getal(r.voud) if r.voud > 0 else u"-")
-        regels.append(regel)
+            rij.append(nl_getal(r.voud) if r.voud > 0 else u"-")
+        rijen_v.append(rij)
 
-    regels.append(u"-" * breedte)
-    regels.append(u"Totaal toevoer: {} dm3/s   Totaal afvoer: {} dm3/s".format(
-        nl_getal(tot_toevoer), nl_getal(tot_afvoer)))
-    regels.append(u"")
-
-    # -- 2. Daglicht ---------------------------------------------------------
-    kop_d = u"{:<5}{:<20}{:<12}{:>7}  {:>6}  {:>9}  {:>10}  {:<14}".format(
-        "Nr", "Ruimte", "Verdieping", "Opp.", "Ramen", "Vereist", "Aanwezig", "Toets")
-    kop_d2 = u"{:<5}{:<20}{:<12}{:>7}  {:>6}  {:>9}  {:>10}".format(
-        "", "", "", "[m2]", "", "Ae [m2]", "Ae [m2]")
-    breedte_d = len(kop_d)
-
-    regels.append(u"2. DAGLICHT (Bbl par. 4.3.7 - equivalente daglichtoppervlakte)")
-    regels.append(kop_d)
-    regels.append(kop_d2)
-    regels.append(u"-" * breedte_d)
-
+    # -- 2. Daglicht: rijen als cellen ----------------------------------------
+    kop_d = [u"Nr", u"Ruimte", u"Verdieping", u"Opp.", u"Ramen",
+             u"Vereist", u"Aanwezig", u"Toets"]
+    kop_d2 = [u"", u"", u"", u"[m2]", u"", u"Ae [m2]", u"Ae [m2]", u""]
+    rijen_d = [kop_d, kop_d2]
     for r in zichtbaar:
         if r.ae_vereist <= 0 and not toon_zonder_eis:
             continue
@@ -550,17 +622,43 @@ def bouw_tabel_tekst(ruimtes, instellingen, toon_zonder_eis):
             aanwezig = nl_getal(r.ae_aanwezig, 2)
             if r.ae_override is not None:
                 aanwezig += u"*"
-        regels.append(u"{:<5}{:<20}{:<12}{:>7}  {:>6}  {:>9}  {:>10}  {:<14}".format(
-            r.nummer[:4],
-            r.naam[:19],
-            r.niveau[:11],
+        rijen_d.append([
+            r.nummer[:6], r.naam[:24], r.niveau[:14],
             nl_getal(r.opp),
             str(r.raam_aantal) if r.raam_aantal > 0 else u"-",
             nl_getal(r.ae_vereist, 2) if r.ae_vereist > 0 else u"-",
             aanwezig,
-            r.daglicht_toets))
+            r.daglicht_toets])
 
-    regels.append(u"-" * breedte_d)
+    # Gedeelde kolomindeling over beide secties: 1 raster voor de hele note
+    starts, totaal_mm = _kolom_starts(rijen_v + rijen_d, tab_mm,
+                                      hoogte_mm, factor)
+    lijn = _scheidingslijn(totaal_mm, hoogte_mm, factor)
+
+    regels = []
+    regels.append(u"BBL-TOETS BOUWAANVRAAG")
+    regels.append(u"Project: {}   Datum: {}".format(
+        revit.doc.Title, date.today().strftime('%d-%m-%Y')))
+    regels.append(u"")
+
+    regels.append(u"1. VENTILATIE (Bbl par. 4.3.5 - luchtverversing, nieuwbouw)")
+    regels.append(_tab_regel(rijen_v[0], starts, tab_mm, hoogte_mm, factor))
+    regels.append(_tab_regel(rijen_v[1], starts, tab_mm, hoogte_mm, factor))
+    regels.append(lijn)
+    for rij in rijen_v[2:]:
+        regels.append(_tab_regel(rij, starts, tab_mm, hoogte_mm, factor))
+    regels.append(lijn)
+    regels.append(u"Totaal toevoer: {} dm3/s   Totaal afvoer: {} dm3/s".format(
+        nl_getal(tot_toevoer), nl_getal(tot_afvoer)))
+    regels.append(u"")
+
+    regels.append(u"2. DAGLICHT (Bbl par. 4.3.7 - equivalente daglichtoppervlakte)")
+    regels.append(_tab_regel(rijen_d[0], starts, tab_mm, hoogte_mm, factor))
+    regels.append(_tab_regel(rijen_d[1], starts, tab_mm, hoogte_mm, factor))
+    regels.append(lijn)
+    for rij in rijen_d[2:]:
+        regels.append(_tab_regel(rij, starts, tab_mm, hoogte_mm, factor))
+    regels.append(lijn)
     regels.append(u"")
 
     # -- Uitgangspunten ------------------------------------------------------
@@ -612,7 +710,7 @@ def schrijf_exchange_json(ruimtes, instellingen):
                 'ae_aanwezig_m2': r.ae_aanwezig,
                 'ae_handmatig': r.ae_override is not None,
                 'daglicht_toets': r.daglicht_toets,
-            } for r in ruimtes],
+            } for r in ruimtes if r.geselecteerd],
         }
         pad = os.path.join(EXCHANGE_MAP, EXCHANGE_BESTAND)
         with codecs.open(pad, 'w', 'utf-8') as f:
@@ -881,7 +979,16 @@ class BblToetsForm(Form):
         col.ReadOnly = readonly
         grid.Columns.Add(col)
 
+    def _selectie_kolom(self, grid):
+        col = DataGridViewCheckBoxColumn()
+        col.Name = "sel"
+        col.HeaderText = ""
+        col.Width = DPIScaler.scale(30)
+        col.ReadOnly = False
+        grid.Columns.Add(col)
+
     def _kolommen_ventilatie(self, grid):
+        self._selectie_kolom(grid)
         self._tekst_kolom(grid, "nummer", "Nr", 45)
         self._tekst_kolom(grid, "naam", "Ruimte", 150)
         self._tekst_kolom(grid, "niveau", "Verdieping", 95)
@@ -902,6 +1009,7 @@ class BblToetsForm(Form):
         self._tekst_kolom(grid, "voud", "Voud [1/h]", 75)
 
     def _kolommen_daglicht(self, grid):
+        self._selectie_kolom(grid)
         self._tekst_kolom(grid, "nummer", "Nr", 45)
         self._tekst_kolom(grid, "naam", "Ruimte", 150)
         self._tekst_kolom(grid, "niveau", "Verdieping", 95)
@@ -921,12 +1029,14 @@ class BblToetsForm(Form):
             r.bereken_ventilatie(s['factor'], s['minimum'], s['capaciteit'],
                                  ROOSTER_AFRONDING_MM)
             r.bereken_daglicht(s['glasfactor'], s['belemmering'])
-        tot_t = sum(r.toevoer for r in self.ruimtes)
-        tot_a = sum(r.afvoer for r in self.ruimtes)
-        n_tekort = sum(1 for r in self.ruimtes if r.daglicht_toets.startswith('TEKORT'))
-        self.lbl_status.Text = ("{} ruimtes | toevoer {} dm3/s | afvoer {} dm3/s | "
-                                "daglicht: {} tekort").format(
-            len(self.ruimtes), nl_getal(tot_t), nl_getal(tot_a), n_tekort)
+        actief = [r for r in self.ruimtes if r.geselecteerd]
+        tot_t = sum(r.toevoer for r in actief)
+        tot_a = sum(r.afvoer for r in actief)
+        n_tekort = sum(1 for r in actief if r.daglicht_toets.startswith('TEKORT'))
+        self.lbl_status.Text = ("{} van {} ruimtes | toevoer {} dm3/s | "
+                                "afvoer {} dm3/s | daglicht: {} tekort").format(
+            len(actief), len(self.ruimtes), nl_getal(tot_t), nl_getal(tot_a),
+            n_tekort)
 
     def _vul_grids(self):
         self._updating = True
@@ -935,6 +1045,7 @@ class BblToetsForm(Form):
             self.grid_dag.Rows.Clear()
             for r in self.ruimtes:
                 idx = self.grid_vent.Rows.Add(
+                    r.geselecteerd,
                     r.nummer, r.naam, r.niveau, nl_getal(r.opp), r.type_key,
                     nl_getal(r.toevoer) if r.toevoer > 0 else "-",
                     r.rooster_tekst,
@@ -950,6 +1061,7 @@ class BblToetsForm(Form):
                     if r.ae_override is not None:
                         aanwezig += "*"
                 idx_d = self.grid_dag.Rows.Add(
+                    r.geselecteerd,
                     r.nummer, r.naam, r.niveau, nl_getal(r.opp), r.type_key,
                     nl_getal(r.ae_vereist, 2) if r.ae_vereist > 0 else "-",
                     str(r.raam_aantal) if r.raam_aantal > 0 else "-",
@@ -967,6 +1079,9 @@ class BblToetsForm(Form):
                 if r.ae_override is not None:
                     self.grid_dag.Rows[idx_d].Cells["aanwezig"].Style.BackColor = \
                         Color.FromArgb(230, 255, 230)
+                if not r.geselecteerd:
+                    self.grid_vent.Rows[idx].DefaultCellStyle.ForeColor = Color.Gray
+                    self.grid_dag.Rows[idx_d].DefaultCellStyle.ForeColor = Color.Gray
         finally:
             self._updating = False
 
@@ -981,8 +1096,18 @@ class BblToetsForm(Form):
         if grid.IsCurrentCellDirty:
             grid.CommitEdit(1)
 
+    def _sel_changed(self, grid, idx):
+        if 0 <= idx < len(self.ruimtes):
+            waarde = grid.Rows[idx].Cells["sel"].Value
+            self.ruimtes[idx].geselecteerd = bool(waarde)
+            self._herbereken()
+            self._vul_grids()
+
     def _vent_grid_changed(self, s, e):
         if self._updating or e.RowIndex < 0:
+            return
+        if e.ColumnIndex == self.grid_vent.Columns["sel"].Index:
+            self._sel_changed(self.grid_vent, e.RowIndex)
             return
         if e.ColumnIndex == self.grid_vent.Columns["type"].Index:
             idx = e.RowIndex
@@ -994,6 +1119,9 @@ class BblToetsForm(Form):
 
     def _dag_grid_changed(self, s, e):
         if self._updating or e.RowIndex < 0:
+            return
+        if e.ColumnIndex == self.grid_dag.Columns["sel"].Index:
+            self._sel_changed(self.grid_dag, e.RowIndex)
             return
         if e.ColumnIndex == self.grid_dag.Columns["aanwezig"].Index:
             idx = e.RowIndex
@@ -1009,11 +1137,18 @@ class BblToetsForm(Form):
             MessageBox.Show("Geen teksttypes in dit document gevonden.",
                             "Fout", MessageBoxButtons.OK, MessageBoxIcon.Warning)
             return
+        if not any(r.geselecteerd for r in self.ruimtes):
+            MessageBox.Show("Geen ruimtes geselecteerd. Vink minimaal een "
+                            "ruimte aan in de tabel.",
+                            "Bbl-Toets", MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning)
+            return
         idx = self.cmb_teksttype.SelectedIndex
         if idx < 0:
             idx = 0
         tekst = bouw_tabel_tekst(self.ruimtes, self.instellingen,
-                                 self.chk_zonder_eis.Checked)
+                                 self.chk_zonder_eis.Checked,
+                                 self.teksttypes[idx][1])
         self.plaats_data = {
             'tekst': tekst,
             'teksttype_id': self.teksttypes[idx][1],
@@ -1065,8 +1200,9 @@ def plaats_tabel(plaats_data, ruimtes):
     log.info("Bbl-toets-tabel geplaatst op view '{}' (teksttype {})".format(
         view.Name, plaats_data['teksttype_naam']))
     forms.alert("Bbl-toets-tabel geplaatst op view '{}'.\n\n"
-                "Teksttype: {}\nTip: gebruik een monospace-teksttype als de "
-                "kolommen niet uitlijnen.".format(view.Name, plaats_data['teksttype_naam']),
+                "Teksttype: {}\nDe kolommen lijnen uit op de Tab Size van het "
+                "teksttype; pas die aan als kolommen te dicht op elkaar staan."
+                .format(view.Name, plaats_data['teksttype_naam']),
                 title="Bbl-Toets")
 
 
@@ -1081,6 +1217,15 @@ if __name__ == '__main__':
                         "Plaats eerst Rooms met een oppervlak.",
                         title="Bbl-Toets", exitscript=True)
         koppel_ramen(alle_ruimtes)
+        # Voorselectie: rooms die in Revit geselecteerd zijn bij het starten
+        try:
+            sel_ids = set(eid.IntegerValue
+                          for eid in revit.uidoc.Selection.GetElementIds())
+            if any(r.element_id in sel_ids for r in alle_ruimtes):
+                for r in alle_ruimtes:
+                    r.geselecteerd = r.element_id in sel_ids
+        except Exception:
+            pass
         form = BblToetsForm(alle_ruimtes)
         form.ShowDialog()
         if form.plaats_data:

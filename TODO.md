@@ -1,6 +1,6 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 14 juli 2026*
+*Laatste update: 15 juli 2026*
 
 ---
 
@@ -9,10 +9,12 @@
 > Nieuwe tool `Bouwkunde.tab/Bouwbesluit.panel/BblToets.pushbutton` (eerder Ventilatievoud, zelfde sessie uitgebreid): Bbl-toets voor de bouwaanvraag (nieuwbouw woonfunctie) met twee tabbladen. **Ventilatie** (§4.3.5): eis per ruimte + Ducoton 10 'ZR' roosterlengtes (10,2 dm³/s per m¹ bij 1 Pa, geverifieerd tegen Duco-datasheet). **Daglicht** (§4.3.7): equivalente daglichtopp. 10% vloeropp. min. 0,5 m², aanwezig via windows per ruimte (FromRoom/ToRoom, kozijnmaten cf. Kozijnstaat-conventie `kozijn_breedte`/`kozijn_hoogte`) × glasfactor × belemmeringsfactor, per rij handmatig te overrulen. Type-detectie op ruimtenaam met override, gecombineerde tekst-tabel via klikpunt op actieve view.
 
 - [x] **Daglicht-koppeling geverifieerd (14 juli, live via Revit MCP op model 5001)** — glas-families hebben nu een Room Calculation Point; koppeling loopt via `GetSpatialElementCalculationPoint` + `doc.GetRoomAtPoint(punt, fase)` (get_ToRoom geeft None op geneste families, óók met RCP). Fasen-fix: zoeken in fasen mét rooms i.p.v. laatste fase. 12/12 panelen rond testruimte correct
-- [ ] **UI-test in Revit** — form openen na Reload: beide tabs, type-combobox override, roosterlengtes, Ae-override cel (komma-invoer), plaatsing TextNote met `3BM_2mm`
+- [x] **Kolomuitlijning via tabs (15 juli, Revit-test pending)** — tabel gebruikt nu `\t`-uitlijning op de Tab Size van het gekozen teksttype i.p.v. spatie-padding; celbreedtes geschat via Arial-em-tabel × teksthoogte × Width Factor, beide secties op één gedeeld kolomraster. Monospace-teksttype niet meer nodig
+- [x] **Ruimte-selectie (15 juli, Revit-test pending)** — vinkkolom in beide grids (uitgevinkt = grijs, buiten tabel/totalen/JSON); rooms die bij het starten in Revit geselecteerd zijn worden voorgeselecteerd
+- [ ] **UI-test in Revit** — form openen na Reload: beide tabs, vinkkolom (incl. voorselectie vanuit Revit-selectie), type-combobox override, roosterlengtes, Ae-override cel (komma-invoer), plaatsing TextNote met `3BM_2mm`
+- [ ] **Tab-uitlijning visueel controleren** op geplaatste TextNote met `3BM_2mm` — em-breedtes zijn Arial-benadering; bij verlopen kolommen Tab Size van het teksttype vergroten of `_KOLOM_MARGE_MM` bijstellen
 - [ ] **Glas-maten exact maken** — glasopp. komt nu uit bbox-fallback (23,35 m² voor 12 panelen, mogelijk overschat bij draaiende delen); `glas_breedte`/`glas_hoogte` params aan glas-family toevoegen
 - [ ] **Rooms plaatsen in model 5001** — nu 1 room (fase Nieuw); oude family `31 dubbel_glas` (2x) heeft geen RCP/maat
-- [ ] **Kolomuitlijning controleren** met het `3BM_2mm` teksttype (niet-monospace font → kolommen kunnen verlopen; evt. monospace 3BM-teksttype aanmaken in template)
 - [ ] Ventilatievoud-kolom verifiëren in project met volumeberekening aan (Areas & Volumes)
 - [ ] Evt. uitbreiden: spuiventilatie (§4.3.5), geluidwering, daglicht per verblijfsgebied i.p.v. per ruimte
 
