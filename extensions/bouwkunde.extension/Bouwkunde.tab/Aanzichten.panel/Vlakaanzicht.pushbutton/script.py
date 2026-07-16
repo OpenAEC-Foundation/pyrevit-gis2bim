@@ -4,7 +4,9 @@
 Workflow:
   1. Gebruiker pickt een face (op dak, wand, vloer, plafond, etc.).
   2. Script bepaalt de face-normaal en bouwt een orthonormaal frame:
-     - BasisZ = face_normal (kijkrichting uit het vlak)
+     - BasisZ = -face_normal (CreateSection zet de kijker aan de
+       -BasisZ-kant: ViewDirection = -BasisZ; met BasisZ = -normaal
+       kijk je dus vanaf de gepickte kant op het vlak)
      - BasisY = "upslope": projectie van wereld-Z op het vlak
      - BasisX = BasisY x BasisZ
      Voor horizontale faces (vloer/plafond) wordt wereld-Y als
@@ -322,9 +324,14 @@ def _face_center_and_normal(face):
 def _build_view_frame(normal):
     """Bouw orthonormaal frame voor een section view.
 
-    - BasisZ = normal (uit het vlak, naar de kijker)
+    ViewSection.CreateSection zet de kijker aan de -BasisZ-kant van het
+    section-frame (resulterende ViewDirection = -BasisZ, richting kijker).
+    Om vanaf de gepickte kant op het vlak te kijken moet BasisZ dus de
+    NEGATIEVE face-normaal zijn:
+
+    - BasisZ = -normal (kijker staat aan de +normal-kant)
     - BasisY = upslope (projectie wereld-Z op vlak)
-    - BasisX = BasisY x BasisZ
+    - BasisX = BasisY x BasisZ (rechtshandig frame)
 
     Voor (vrijwel) horizontale vlakken (vloer/plafond) wordt wereld-Y
     als up-referentie gebruikt om degenerate cross product te vermijden.
@@ -339,8 +346,8 @@ def _build_view_frame(normal):
     # Projecteer up_ref op het vlak loodrecht op n
     up_in_plane = up_ref.Subtract(n.Multiply(up_ref.DotProduct(n)))
     basis_y = up_in_plane.Normalize()
-    basis_x = basis_y.CrossProduct(n).Normalize()
-    basis_z = n
+    basis_z = n.Negate()
+    basis_x = basis_y.CrossProduct(basis_z).Normalize()
     return basis_x, basis_y, basis_z
 
 
@@ -437,15 +444,15 @@ def _compute_section_box(face, elem, center, bx, by, bz,
     y_min = min(ex_ys) - MARGIN_FT
     y_max = max(ex_ys) + MARGIN_FT
 
-    # Z-diepte: section box Z-as wijst naar kijker (positief +Z),
-    # alles achter het vlak heeft negatieve Z. Element-bbox bepaalt
-    # hoe diep we moeten gaan om het achterliggende materiaal te
-    # pakken.
-    z_far_back = min(zs) if zs else -1.0
-    if z_far_back > -DEPTH_BEHIND_FT:
-        z_far_back = -DEPTH_BEHIND_FT
-    z_min = z_far_back - DEPTH_BEHIND_FT
-    z_max = DEPTH_FRONT_FT
+    # Z-diepte: section box Z-as (= -face-normaal) wijst van de kijker
+    # af; de kijker staat aan de negatieve Z-kant. Materiaal achter het
+    # gepickte vlak heeft dus positieve Z. Element-bbox bepaalt hoe diep
+    # de far clip moet liggen om het achterliggende materiaal te pakken.
+    z_far_back = max(zs) if zs else 1.0
+    if z_far_back < DEPTH_BEHIND_FT:
+        z_far_back = DEPTH_BEHIND_FT
+    z_min = -DEPTH_FRONT_FT
+    z_max = z_far_back + DEPTH_BEHIND_FT
 
     transform = Transform.Identity
     transform.Origin = center
