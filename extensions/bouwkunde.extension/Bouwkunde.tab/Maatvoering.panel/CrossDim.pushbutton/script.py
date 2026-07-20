@@ -5,7 +5,7 @@ Plaats kruisende maatlijnen in rooms met één klik.
 Klik in een room om horizontale en verticale maatlijnen te plaatsen.
 
 Auteur: 3BM Bouwkunde
-Versie: 1.1.0 - Room-brede maatlijnen, standaard 1.8mm type
+Versie: 1.2.0 - Ondersteuning voor gelinkte modellen (wanden + rooms uit links)
 """
 
 import clr
@@ -21,7 +21,7 @@ if LIB_DIR not in sys.path:
 
 from bm_logger import get_logger
 log = get_logger("CrossDim")
-log.info("CrossDim v1.1.1")
+log.info("CrossDim v1.2.0")
 
 from ui_template import BaseForm, UIFactory, DPIScaler, Huisstijl
 
@@ -76,42 +76,125 @@ def find_default_dim_type_index(dim_types):
     return -1  # Geen default gevonden
 
 
-def get_room_at_point(point, view):
-    """Vind room op een bepaald punt."""
+def get_link_instances():
+    """Verzamel geladen RevitLinkInstances: (instance, link_doc, transform)."""
+    links = []
+    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        try:
+            link_doc = link.GetLinkDocument()
+            if link_doc is None:
+                continue  # link niet geladen
+            if link.IsHidden(active_view):
+                continue
+            links.append((link, link_doc, link.GetTotalTransform()))
+        except:
+            pass
+    return links
+
+
+def collect_walls(view, links):
+    """Verzamel wanden uit host-document en gelinkte modellen.
+
+    Retourneert lijst van (wall, transform, link_instance).
+    transform en link_instance zijn None voor host-wanden.
+    """
+    entries = []
+    for wall in FilteredElementCollector(doc, view.Id).OfClass(Wall):
+        entries.append((wall, None, None))
+    log.info("Host walls: {}".format(len(entries)))
+
+    for link, link_doc, transform in links:
+        try:
+            link_walls = list(FilteredElementCollector(link_doc)
+                              .OfClass(Wall)
+                              .WhereElementIsNotElementType())
+            log.info("Link '{}': {} walls".format(link_doc.Title, len(link_walls)))
+            for wall in link_walls:
+                entries.append((wall, transform, link))
+        except Exception as ex:
+            log.debug("Link walls failed: {}".format(ex))
+
+    return entries
+
+
+def get_room_at_point(point, view, links):
+    """Vind room op een punt: eerst host-document, dan gelinkte modellen.
+
+    Retourneert (room, transform). transform is None voor host-rooms,
+    anders de link-transform (link-coords -> host-coords).
+    """
     rooms = FilteredElementCollector(doc, view.Id)\
         .OfCategory(BuiltInCategory.OST_Rooms)\
         .WhereElementIsNotElementType()\
         .ToElements()
-    
+
     for room in rooms:
         if room.IsPointInRoom(point):
-            return room
-    
-    return None
+            return room, None
 
+    for link, link_doc, transform in links:
+        try:
+            link_point = transform.Inverse.OfPoint(point)
+            link_rooms = FilteredElementCollector(link_doc)\
+                .OfCategory(BuiltInCategory.OST_Rooms)\
+                .WhereElementIsNotElementType()\
+                .ToElements()
+            for room in link_rooms:
+                try:
+                    if room.IsPointInRoom(link_point):
+                        return room, transform
+                    # Klikpunt-Z kan buiten de room-hoogte vallen (verticale
+                    # link-offset) — hertest op level-hoogte van de room
+                    level = room.Level
+                    if level:
+                        adjusted = XYZ(link_point.X, link_point.Y,
+                                       level.Elevation + 1.0)
+                        if room.IsPointInRoom(adjusted):
+                            return room, transform
+                except:
+                    pass
+        except Exception as ex:
+            log.debug("Link rooms failed: {}".format(ex))
 
-def get_room_bounding_box(room):
-    """Haal bounding box van room."""
-    bbox = room.get_BoundingBox(active_view)
-    if bbox:
-        return bbox.Min, bbox.Max
     return None, None
 
 
-def find_wall_faces_in_direction(start_point, direction, walls, view, room_min, room_max):
+def get_room_bounding_box(room, transform=None):
+    """Haal bounding box van room, in host-coordinaten."""
+    if transform is None:
+        bbox = room.get_BoundingBox(active_view)
+        if bbox:
+            return bbox.Min, bbox.Max
+        return None, None
+
+    bbox = room.get_BoundingBox(None)
+    if not bbox:
+        return None, None
+    p1 = transform.OfPoint(bbox.Min)
+    p2 = transform.OfPoint(bbox.Max)
+    min_pt = XYZ(min(p1.X, p2.X), min(p1.Y, p2.Y), min(p1.Z, p2.Z))
+    max_pt = XYZ(max(p1.X, p2.X), max(p1.Y, p2.Y), max(p1.Z, p2.Z))
+    return min_pt, max_pt
+
+
+def find_wall_faces_in_direction(start_point, direction, wall_entries, view, room_min, room_max):
     """
     Zoek wand face references in een richting, binnen room bounds.
     Zoekt de dichtstbijzijnde wand in de gegeven richting.
+    wall_entries: lijst van (wall, transform, link_instance) — transform/link
+    zijn None voor host-wanden, gevuld voor wanden uit gelinkte modellen.
     """
     best_ref = None
     best_dist = 1000.0  # Max zoekafstand
-    
-    for wall in walls:
+
+    for wall, transform, link in wall_entries:
         wall_loc = wall.Location
         if not isinstance(wall_loc, LocationCurve):
             continue
-        
+
         wall_curve = wall_loc.Curve
+        if transform is not None:
+            wall_curve = wall_curve.CreateTransformed(transform)
         ws = wall_curve.GetEndPoint(0)
         we = wall_curve.GetEndPoint(1)
         
@@ -158,46 +241,54 @@ def find_wall_faces_in_direction(start_point, direction, walls, view, room_min, 
         # Haal face reference
         options = Options()
         options.ComputeReferences = True
-        options.View = view
-        
+        if transform is None:
+            options.View = view
+        # Voor link-wanden geen View zetten: Options.View moet uit hetzelfde
+        # document komen als het element — default detail level volstaat
+
         geom = wall.get_Geometry(options)
         if not geom:
             continue
-        
+
         for geom_obj in geom:
             if not isinstance(geom_obj, Solid) or geom_obj.Volume <= 0:
                 continue
-            
+
             for face in geom_obj.Faces:
                 if not isinstance(face, PlanarFace):
                     continue
-                
+
                 fn = face.FaceNormal
+                if transform is not None:
+                    fn = transform.OfVector(fn)
                 if abs(fn.Z) > 0.1:
                     continue
-                
+
                 # Face moet naar startpunt wijzen (tegengesteld aan direction)
                 face_dot = fn.X * (-direction.X) + fn.Y * (-direction.Y)
                 if face_dot < 0.5:
                     continue
-                
+
                 ref = face.Reference
                 if ref:
+                    if link is not None:
+                        ref = ref.CreateLinkReference(link)
                     best_ref = ref
                     best_dist = dist
                     break
-    
+
     return best_ref, best_dist
 
 
-def create_room_dimensions(click_point, room, walls, view, dim_type_id):
+def create_room_dimensions(click_point, room, walls, view, dim_type_id, room_transform=None):
     """
     Maak horizontale en verticale maatlijnen die de room breed/hoog beslaan.
     De maatlijnen lopen door het klikpunt.
+    room_transform: link-transform als de room uit een gelinkt model komt.
     """
     log.info("Creating dimensions at ({:.2f}, {:.2f})".format(click_point.X, click_point.Y))
-    
-    min_pt, max_pt = get_room_bounding_box(room)
+
+    min_pt, max_pt = get_room_bounding_box(room, room_transform)
     if not min_pt or not max_pt:
         return None, None, "Kon room bounds niet bepalen"
     
@@ -386,17 +477,33 @@ def main():
     options = form.options
     log.log_options(options)
     
-    walls = list(FilteredElementCollector(doc, active_view.Id).OfClass(Wall).ToElements())
-    log.info("Walls in view: {}".format(len(walls)))
-    
+    links = get_link_instances()
+    log.info("Linked models: {}".format(len(links)))
+
+    walls = collect_walls(active_view, links)
+    log.info("Walls totaal (host + links): {}".format(len(walls)))
+
     rooms = list(FilteredElementCollector(doc, active_view.Id)\
         .OfCategory(BuiltInCategory.OST_Rooms)\
         .WhereElementIsNotElementType().ToElements())
     log.info("Rooms in view: {}".format(len(rooms)))
-    
+
     if not rooms:
-        forms.alert("Geen rooms in view.", title="CrossDim")
-        return
+        has_link_rooms = False
+        for link, link_doc, transform in links:
+            try:
+                count = FilteredElementCollector(link_doc)\
+                    .OfCategory(BuiltInCategory.OST_Rooms)\
+                    .WhereElementIsNotElementType()\
+                    .GetElementCount()
+                if count > 0:
+                    has_link_rooms = True
+                    break
+            except:
+                pass
+        if not has_link_rooms:
+            forms.alert("Geen rooms in view of in gelinkte modellen.", title="CrossDim")
+            return
     
     dim_count = 0
     room_count = 0
@@ -408,18 +515,18 @@ def main():
                 "Klik in een room (ESC om te stoppen)"
             )
             
-            room = get_room_at_point(click_point, active_view)
-            
+            room, room_transform = get_room_at_point(click_point, active_view, links)
+
             if not room:
                 continue
-            
+
             room_name = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString() or "Unnamed"
-            log.info("Room: {}".format(room_name))
-            
+            log.info("Room: {}{}".format(room_name, " (link)" if room_transform else ""))
+
             with revit.Transaction("CrossDim - {}".format(room_name)):
                 dim_h, dim_v, err = create_room_dimensions(
                     click_point, room, walls, active_view,
-                    options.get('dim_type_id')
+                    options.get('dim_type_id'), room_transform
                 )
                 
                 if not err:

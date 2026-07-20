@@ -1,6 +1,16 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 15 juli 2026*
+*Laatste update: 20 juli 2026*
+
+---
+
+## CrossDim — linked models (20 juli 2026, nieuw, Revit-test pending)
+
+> CrossDim v1.2.0: herkent nu wanden én rooms uit gelinkte modellen. Wanden uit alle geladen (niet-verborgen) links met transform naar host-coördinaten; maatlijn-referenties via `Reference.CreateLinkReference()`; room-detectie in links via inverse transform (met Z-fallback op room-level bij verticale link-offset).
+
+- [ ] **Live-test in Revit** — plattegrond met gelinkt bouwkundig model: klik in room uit link → H+V maatlijnen naar link-wanden. Check ook mixed geval (host-rooms + link-wanden).
+- [ ] **NewDimension met link-references verifiëren** — werkt in de regel vanaf Revit 2019+, maar kan per view/werkvlak weigeren; fouten staan op debug-level in de bm_logger-log.
+- [ ] Bij traag gedrag in grote links: wanden voorfilteren op bounding box van de room i.p.v. alle link-wanden meenemen.
 
 ---
 
