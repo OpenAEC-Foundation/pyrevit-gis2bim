@@ -5,8 +5,7 @@ Plaats kruisende maatlijnen in rooms met één klik.
 Klik in een room om horizontale en verticale maatlijnen te plaatsen.
 
 Auteur: 3BM Bouwkunde
-Versie: 1.5.0 - Room-detectie fix badkamer/toilet (afwerkvloer tilt roomvolume op),
-                default maatlijntype 'verkoop'
+Versie: 1.5.1 - Wandfilter alleen op 'tegel' in typenaam (gipsplaat e.d. weer meegenomen)
 """
 
 import clr
@@ -22,7 +21,7 @@ if LIB_DIR not in sys.path:
 
 from bm_logger import get_logger
 log = get_logger("CrossDim")
-log.info("CrossDim v1.5.0")
+log.info("CrossDim v1.5.1")
 
 from ui_template import BaseForm, UIFactory, DPIScaler, Huisstijl
 
@@ -101,44 +100,22 @@ COLUMN_CATEGORIES = [
     BuiltInCategory.OST_StructuralColumns,  # constructieve kolommen
 ]
 
-AFWERK_KEYWORDS = ['tegel', 'stuc', 'afwerk', 'finish']
-AFWERK_MAX_DIKTE_FT = 30.0 / 304.8  # wanden dunner dan 30mm = afwerking
-
-
 def is_afwerkingswand(wall):
-    """Detecteer afwerkingswanden (tegelwerk/stucwerk).
+    """Detecteer tegelwanden: 'tegel' in de typenaam.
 
-    Criteria (OR):
-    - Comments-marker van de WandVloerAfwerking-tool (3BM_Afwerking_...)
-    - keyword in de typenaam (tegel/stuc/afwerk/finish)
-    - typedikte < 30mm
+    Bewust alleen op 'tegel': dunne voorzetwanden (gipsplaat e.d.)
+    moeten wél gemaatvoerd worden.
     """
-    try:
-        cmt = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
-        if cmt:
-            val = cmt.AsString()
-            if val and val.startswith("3BM_Afwerking_"):
-                return True
-    except:
-        pass
-
     try:
         wt = wall.Document.GetElement(wall.GetTypeId())
         if wt:
             name_param = wt.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
             if name_param:
                 name = (name_param.AsString() or "").lower()
-                for kw in AFWERK_KEYWORDS:
-                    if kw in name:
-                        return True
-            try:
-                if wt.Width < AFWERK_MAX_DIKTE_FT:
+                if "tegel" in name:
                     return True
-            except:
-                pass  # curtain walls e.d. hebben geen Width
     except:
         pass
-
     return False
 
 
@@ -626,9 +603,9 @@ class CrossDimForm(BaseForm):
         self.pnl_content.Controls.Add(self.cmb_type)
         y += DPIScaler.scale(55)
 
-        # Afwerkingswanden negeren
+        # Tegelwanden negeren
         self.chk_afwerking = UIFactory.create_checkbox(
-            "Negeer afwerkingswanden (tegelwerk/stucwerk)", checked=True
+            "Negeer tegelwanden ('tegel' in typenaam)", checked=True
         )
         self.chk_afwerking.Location = Point(m, y)
         self.pnl_content.Controls.Add(self.chk_afwerking)
@@ -643,8 +620,8 @@ class CrossDimForm(BaseForm):
             "3. Ga door naar volgende room\n"
             "4. Druk ESC om te stoppen\n"
             "\n"
-            "Afwerkingswanden (tegelwerk, stucwerk, <30mm) worden\n"
-            "genegeerd: de maatlijn pakt de wand erachter.",
+            "Tegelwanden ('tegel' in typenaam) worden genegeerd:\n"
+            "de maatlijn pakt de wand erachter.",
             font_size=9, italic=True, color=Huisstijl.TEXT_SECONDARY
         )
         info.Location = Point(m, y)
