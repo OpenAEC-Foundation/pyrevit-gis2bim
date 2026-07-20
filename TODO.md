@@ -10,6 +10,8 @@
 
 - [ ] **Live-test in Revit** — plattegrond met gelinkt bouwkundig model: klik in room uit link → H+V maatlijnen naar link-wanden. Check ook mixed geval (host-rooms + link-wanden).
 - [ ] **Kolommen-test** — room met vrijstaande kolom: maatlijn moet op kolom-face stoppen als die dichterbij is dan de wand; test zowel host- als link-kolommen, en ronde kolommen (worden bewust genegeerd: geen PlanarFace).
+- [ ] **Badkamer/toilet-test (v1.4.0)** — afwerkingswanden (tegelwerk/stucwerk) worden genegeerd zodat de maatlijn de wand erachter pakt. Detectie: Comments-marker `3BM_Afwerking_*` (WandVloerAfwerking-tool) OF keyword in typenaam (tegel/stuc/afwerk/finish) OF typedikte < 30mm. Checkbox in UI om uit te zetten. Verifiëren dat de tegelwand-detectie klopt op een echt project (typenamen checken!) en dat er geen dunne scheidingswanden onterecht wegvallen.
+- [ ] **View-refresh na elke klik verifiëren** — `uidoc.RefreshActiveView()` na elke transaction; maatlijnen moeten direct zichtbaar zijn vóór de volgende klik. Echte hover-preview (kruislijnen die met de muis meebewegen vóór de klik) kan niet met `PickPoint` — zou DirectContext3D vergen; alleen oppakken als de refresh onvoldoende blijkt.
 - [ ] **NewDimension met link-references verifiëren** — werkt in de regel vanaf Revit 2019+, maar kan per view/werkvlak weigeren; fouten staan op debug-level in de bm_logger-log.
 - [ ] Bij traag gedrag in grote links: wanden/kolommen voorfilteren op bounding box van de room i.p.v. alles meenemen.
 

@@ -5,7 +5,7 @@ Plaats kruisende maatlijnen in rooms met één klik.
 Klik in een room om horizontale en verticale maatlijnen te plaatsen.
 
 Auteur: 3BM Bouwkunde
-Versie: 1.3.0 - Kolommen (bouwkundig + constructief) als referenties, ook uit links
+Versie: 1.4.0 - Afwerkingswanden (tegelwerk) negeren, view-refresh na elke klik
 """
 
 import clr
@@ -21,7 +21,7 @@ if LIB_DIR not in sys.path:
 
 from bm_logger import get_logger
 log = get_logger("CrossDim")
-log.info("CrossDim v1.3.0")
+log.info("CrossDim v1.4.0")
 
 from ui_template import BaseForm, UIFactory, DPIScaler, Huisstijl
 
@@ -97,16 +97,62 @@ COLUMN_CATEGORIES = [
     BuiltInCategory.OST_StructuralColumns,  # constructieve kolommen
 ]
 
+AFWERK_KEYWORDS = ['tegel', 'stuc', 'afwerk', 'finish']
+AFWERK_MAX_DIKTE_FT = 30.0 / 304.8  # wanden dunner dan 30mm = afwerking
 
-def collect_dim_elements(view, links):
+
+def is_afwerkingswand(wall):
+    """Detecteer afwerkingswanden (tegelwerk/stucwerk).
+
+    Criteria (OR):
+    - Comments-marker van de WandVloerAfwerking-tool (3BM_Afwerking_...)
+    - keyword in de typenaam (tegel/stuc/afwerk/finish)
+    - typedikte < 30mm
+    """
+    try:
+        cmt = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
+        if cmt:
+            val = cmt.AsString()
+            if val and val.startswith("3BM_Afwerking_"):
+                return True
+    except:
+        pass
+
+    try:
+        wt = wall.Document.GetElement(wall.GetTypeId())
+        if wt:
+            name_param = wt.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)
+            if name_param:
+                name = (name_param.AsString() or "").lower()
+                for kw in AFWERK_KEYWORDS:
+                    if kw in name:
+                        return True
+            try:
+                if wt.Width < AFWERK_MAX_DIKTE_FT:
+                    return True
+            except:
+                pass  # curtain walls e.d. hebben geen Width
+    except:
+        pass
+
+    return False
+
+
+def collect_dim_elements(view, links, ignore_afwerking=True):
     """Verzamel wanden en kolommen uit host-document en gelinkte modellen.
 
     Retourneert lijst van (element, transform, link_instance, kind).
     kind is 'wall' of 'column'; transform en link_instance zijn None
-    voor host-elementen.
+    voor host-elementen. Met ignore_afwerking=True worden afwerkings-
+    wanden (tegelwerk/stucwerk) overgeslagen, zodat de maatlijn de
+    wand erachter pakt.
     """
     entries = []
+    skipped = 0
     for wall in FilteredElementCollector(doc, view.Id).OfClass(Wall):
+        if ignore_afwerking and is_afwerkingswand(wall):
+            skipped += 1
+            continue
         entries.append((wall, None, None, 'wall'))
     wall_count = len(entries)
 
@@ -127,6 +173,9 @@ def collect_dim_elements(view, links):
             for wall in FilteredElementCollector(link_doc)\
                     .OfClass(Wall)\
                     .WhereElementIsNotElementType():
+                if ignore_afwerking and is_afwerkingswand(wall):
+                    skipped += 1
+                    continue
                 entries.append((wall, transform, link, 'wall'))
                 n_wall += 1
             for cat in COLUMN_CATEGORIES:
@@ -139,6 +188,9 @@ def collect_dim_elements(view, links):
                 link_doc.Title, n_wall, n_col))
         except Exception as ex:
             log.debug("Link elements failed: {}".format(ex))
+
+    if skipped:
+        log.info("Afwerkingswanden genegeerd: {}".format(skipped))
 
     return entries
 
@@ -552,7 +604,15 @@ class CrossDimForm(BaseForm):
         
         self.pnl_content.Controls.Add(self.cmb_type)
         y += DPIScaler.scale(55)
-        
+
+        # Afwerkingswanden negeren
+        self.chk_afwerking = UIFactory.create_checkbox(
+            "Negeer afwerkingswanden (tegelwerk/stucwerk)", checked=True
+        )
+        self.chk_afwerking.Location = Point(m, y)
+        self.pnl_content.Controls.Add(self.chk_afwerking)
+        y += DPIScaler.scale(40)
+
         # Info
         info = UIFactory.create_label(
             "Werkwijze:\n"
@@ -560,7 +620,10 @@ class CrossDimForm(BaseForm):
             "2. Horizontale en verticale maatlijnen worden geplaatst\n"
             "   over de volledige breedte en hoogte van de room\n"
             "3. Ga door naar volgende room\n"
-            "4. Druk ESC om te stoppen",
+            "4. Druk ESC om te stoppen\n"
+            "\n"
+            "Afwerkingswanden (tegelwerk, stucwerk, <30mm) worden\n"
+            "genegeerd: de maatlijn pakt de wand erachter.",
             font_size=9, italic=True, color=Huisstijl.TEXT_SECONDARY
         )
         info.Location = Point(m, y)
@@ -576,7 +639,8 @@ class CrossDimForm(BaseForm):
             dim_type_id = self.dim_types[self.cmb_type.SelectedIndex][0]
         
         self.options = {
-            'dim_type_id': dim_type_id
+            'dim_type_id': dim_type_id,
+            'ignore_afwerking': self.chk_afwerking.Checked
         }
         self.DialogResult = DialogResult.OK
         self.Close()
@@ -615,7 +679,8 @@ def main():
     links = get_link_instances()
     log.info("Linked models: {}".format(len(links)))
 
-    walls = collect_dim_elements(active_view, links)
+    walls = collect_dim_elements(active_view, links,
+                                 options.get('ignore_afwerking', True))
     log.info("Elementen totaal (host + links, wanden + kolommen): {}".format(len(walls)))
 
     rooms = list(FilteredElementCollector(doc, active_view.Id)\
@@ -670,7 +735,14 @@ def main():
                         dim_count += 1
                     if dim_v:
                         dim_count += 1
-        
+
+            # Direct tonen zodat de gebruiker het resultaat ziet
+            # voordat de volgende klik gevraagd wordt
+            try:
+                uidoc.RefreshActiveView()
+            except:
+                pass
+
         except OperationCanceledException:
             break
         except Exception as ex:
