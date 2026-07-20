@@ -5,7 +5,7 @@ Plaats kruisende maatlijnen in rooms met één klik.
 Klik in een room om horizontale en verticale maatlijnen te plaatsen.
 
 Auteur: 3BM Bouwkunde
-Versie: 1.2.0 - Ondersteuning voor gelinkte modellen (wanden + rooms uit links)
+Versie: 1.3.0 - Kolommen (bouwkundig + constructief) als referenties, ook uit links
 """
 
 import clr
@@ -21,7 +21,7 @@ if LIB_DIR not in sys.path:
 
 from bm_logger import get_logger
 log = get_logger("CrossDim")
-log.info("CrossDim v1.2.0")
+log.info("CrossDim v1.3.0")
 
 from ui_template import BaseForm, UIFactory, DPIScaler, Huisstijl
 
@@ -92,27 +92,53 @@ def get_link_instances():
     return links
 
 
-def collect_walls(view, links):
-    """Verzamel wanden uit host-document en gelinkte modellen.
+COLUMN_CATEGORIES = [
+    BuiltInCategory.OST_Columns,            # bouwkundige kolommen
+    BuiltInCategory.OST_StructuralColumns,  # constructieve kolommen
+]
 
-    Retourneert lijst van (wall, transform, link_instance).
-    transform en link_instance zijn None voor host-wanden.
+
+def collect_dim_elements(view, links):
+    """Verzamel wanden en kolommen uit host-document en gelinkte modellen.
+
+    Retourneert lijst van (element, transform, link_instance, kind).
+    kind is 'wall' of 'column'; transform en link_instance zijn None
+    voor host-elementen.
     """
     entries = []
     for wall in FilteredElementCollector(doc, view.Id).OfClass(Wall):
-        entries.append((wall, None, None))
-    log.info("Host walls: {}".format(len(entries)))
+        entries.append((wall, None, None, 'wall'))
+    wall_count = len(entries)
+
+    for cat in COLUMN_CATEGORIES:
+        try:
+            for col in FilteredElementCollector(doc, view.Id)\
+                    .OfCategory(cat)\
+                    .WhereElementIsNotElementType():
+                entries.append((col, None, None, 'column'))
+        except Exception as ex:
+            log.debug("Host columns failed: {}".format(ex))
+    log.info("Host: {} walls, {} columns".format(wall_count, len(entries) - wall_count))
 
     for link, link_doc, transform in links:
         try:
-            link_walls = list(FilteredElementCollector(link_doc)
-                              .OfClass(Wall)
-                              .WhereElementIsNotElementType())
-            log.info("Link '{}': {} walls".format(link_doc.Title, len(link_walls)))
-            for wall in link_walls:
-                entries.append((wall, transform, link))
+            n_wall = 0
+            n_col = 0
+            for wall in FilteredElementCollector(link_doc)\
+                    .OfClass(Wall)\
+                    .WhereElementIsNotElementType():
+                entries.append((wall, transform, link, 'wall'))
+                n_wall += 1
+            for cat in COLUMN_CATEGORIES:
+                for col in FilteredElementCollector(link_doc)\
+                        .OfCategory(cat)\
+                        .WhereElementIsNotElementType():
+                    entries.append((col, transform, link, 'column'))
+                    n_col += 1
+            log.info("Link '{}': {} walls, {} columns".format(
+                link_doc.Title, n_wall, n_col))
         except Exception as ex:
-            log.debug("Link walls failed: {}".format(ex))
+            log.debug("Link elements failed: {}".format(ex))
 
     return entries
 
@@ -177,17 +203,126 @@ def get_room_bounding_box(room, transform=None):
     return min_pt, max_pt
 
 
+def get_solids(geom):
+    """Haal solids uit een GeometryElement, incl. GeometryInstance (families)."""
+    solids = []
+    for obj in geom:
+        if isinstance(obj, Solid) and obj.Volume > 0:
+            solids.append(obj)
+        elif isinstance(obj, GeometryInstance):
+            try:
+                for inst_obj in obj.GetInstanceGeometry():
+                    if isinstance(inst_obj, Solid) and inst_obj.Volume > 0:
+                        solids.append(inst_obj)
+            except:
+                pass
+    return solids
+
+
+def column_ray_hit(column, transform, view, start_point, direction, room_min, room_max):
+    """Ray vs kolom-faces: dichtstbijzijnde vertikale face die naar het
+    startpunt wijst. Retourneert (face, dist) of (None, None).
+
+    Kolommen hebben geen LocationCurve, dus de ray wordt direct met de
+    geometrie-faces gesneden (ray-plane + containment-check via Project).
+    """
+    options = Options()
+    options.ComputeReferences = True
+    if transform is None:
+        options.View = view
+
+    geom = column.get_Geometry(options)
+    if not geom:
+        return None, None
+
+    inv = transform.Inverse if transform is not None else None
+    margin = 2.0  # ~600mm marge, gelijk aan wand-check
+    best_face = None
+    best_t = None
+
+    for solid in get_solids(geom):
+        for face in solid.Faces:
+            if not isinstance(face, PlanarFace):
+                continue
+
+            fn = face.FaceNormal
+            origin = face.Origin
+            if transform is not None:
+                fn = transform.OfVector(fn)
+                origin = transform.OfPoint(origin)
+
+            if abs(fn.Z) > 0.1:
+                continue
+
+            # Face moet naar startpunt wijzen (tegengesteld aan direction)
+            face_dot = fn.X * (-direction.X) + fn.Y * (-direction.Y)
+            if face_dot < 0.5:
+                continue
+
+            # Ray-plane snijpunt
+            denom = direction.X * fn.X + direction.Y * fn.Y
+            if abs(denom) < 0.0001:
+                continue
+            t = ((origin.X - start_point.X) * fn.X
+                 + (origin.Y - start_point.Y) * fn.Y) / denom
+            if t <= 0:
+                continue
+
+            hit_x = start_point.X + t * direction.X
+            hit_y = start_point.Y + t * direction.Y
+            if hit_x < room_min.X - margin or hit_x > room_max.X + margin:
+                continue
+            if hit_y < room_min.Y - margin or hit_y > room_max.Y + margin:
+                continue
+
+            # Containment: ligt het snijpunt echt op deze face (niet alleen
+            # op het oneindige vlak)? Alleen horizontaal checken, zodat een
+            # Z-offset van klikpunt t.o.v. kolomhoogte niet uitmaakt.
+            check_pt = XYZ(hit_x, hit_y, start_point.Z)
+            if inv is not None:
+                check_pt = inv.OfPoint(check_pt)
+            try:
+                proj = face.Project(check_pt)
+            except:
+                proj = None
+            if not proj:
+                continue
+            dx = proj.XYZPoint.X - check_pt.X
+            dy = proj.XYZPoint.Y - check_pt.Y
+            if math.sqrt(dx * dx + dy * dy) > 0.05:
+                continue
+
+            if best_t is None or t < best_t:
+                best_t = t
+                best_face = face
+
+    return best_face, best_t
+
+
 def find_wall_faces_in_direction(start_point, direction, wall_entries, view, room_min, room_max):
     """
-    Zoek wand face references in een richting, binnen room bounds.
-    Zoekt de dichtstbijzijnde wand in de gegeven richting.
-    wall_entries: lijst van (wall, transform, link_instance) — transform/link
-    zijn None voor host-wanden, gevuld voor wanden uit gelinkte modellen.
+    Zoek face references van wanden/kolommen in een richting, binnen room
+    bounds. Zoekt het dichtstbijzijnde element in de gegeven richting.
+    wall_entries: lijst van (element, transform, link_instance, kind) —
+    transform/link zijn None voor host-elementen.
     """
     best_ref = None
     best_dist = 1000.0  # Max zoekafstand
 
-    for wall, transform, link in wall_entries:
+    for wall, transform, link, kind in wall_entries:
+        if kind == 'column':
+            face, t = column_ray_hit(wall, transform, view,
+                                     start_point, direction,
+                                     room_min, room_max)
+            if face is not None and t < best_dist:
+                ref = face.Reference
+                if ref:
+                    if link is not None:
+                        ref = ref.CreateLinkReference(link)
+                    best_ref = ref
+                    best_dist = t
+            continue
+
         wall_loc = wall.Location
         if not isinstance(wall_loc, LocationCurve):
             continue
@@ -480,8 +615,8 @@ def main():
     links = get_link_instances()
     log.info("Linked models: {}".format(len(links)))
 
-    walls = collect_walls(active_view, links)
-    log.info("Walls totaal (host + links): {}".format(len(walls)))
+    walls = collect_dim_elements(active_view, links)
+    log.info("Elementen totaal (host + links, wanden + kolommen): {}".format(len(walls)))
 
     rooms = list(FilteredElementCollector(doc, active_view.Id)\
         .OfCategory(BuiltInCategory.OST_Rooms)\

@@ -14,7 +14,7 @@
 | VentilatieBalans | Bouwbesluit | WinForms | Stabiel | Ventilatiebalans per ruimtezone |
 | HellingbaanGenerator | Bouwbesluit | WinForms | Stabiel | NEN 2443 hellingbanen met DirectShape |
 | AutoDim | Maatvoering | WinForms | Stabiel | Automatische maatvoering via Detail Lines |
-| CrossDim | Maatvoering | WinForms | Stabiel | Kruislings dimensioneren, incl. wanden/rooms uit gelinkte modellen (v1.2.0, live-test nodig) |
+| CrossDim | Maatvoering | WinForms | Stabiel | Kruislings dimensioneren, incl. wanden/kolommen/rooms uit gelinkte modellen (v1.3.0, live-test nodig) |
 | WandVloerAfwerking | Afwerking | WinForms | Stabiel | Wand/vloer afwerkingslagen per ruimte |
 | SheetParameters | Document | WinForms | Stabiel | Bulk update titleblock parameters |
 | FilterCreator | Filter | WinForms | Stabiel | Dynamisch filters aanmaken |

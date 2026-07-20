@@ -4,13 +4,14 @@
 
 ---
 
-## CrossDim — linked models (20 juli 2026, nieuw, Revit-test pending)
+## CrossDim — linked models + kolommen (20 juli 2026, nieuw, Revit-test pending)
 
-> CrossDim v1.2.0: herkent nu wanden én rooms uit gelinkte modellen. Wanden uit alle geladen (niet-verborgen) links met transform naar host-coördinaten; maatlijn-referenties via `Reference.CreateLinkReference()`; room-detectie in links via inverse transform (met Z-fallback op room-level bij verticale link-offset).
+> CrossDim v1.3.0: herkent nu wanden, kolommen (OST_Columns + OST_StructuralColumns) én rooms uit host en gelinkte modellen. Wanden/kolommen uit alle geladen (niet-verborgen) links met transform naar host-coördinaten; maatlijn-referenties via `Reference.CreateLinkReference()`; room-detectie in links via inverse transform (met Z-fallback op room-level bij verticale link-offset). Kolommen via face-based ray-hit (geen LocationCurve): ray-plane snijpunt + containment-check via `face.Project()`, geometrie uit `GeometryInstance.GetInstanceGeometry()`.
 
 - [ ] **Live-test in Revit** — plattegrond met gelinkt bouwkundig model: klik in room uit link → H+V maatlijnen naar link-wanden. Check ook mixed geval (host-rooms + link-wanden).
+- [ ] **Kolommen-test** — room met vrijstaande kolom: maatlijn moet op kolom-face stoppen als die dichterbij is dan de wand; test zowel host- als link-kolommen, en ronde kolommen (worden bewust genegeerd: geen PlanarFace).
 - [ ] **NewDimension met link-references verifiëren** — werkt in de regel vanaf Revit 2019+, maar kan per view/werkvlak weigeren; fouten staan op debug-level in de bm_logger-log.
-- [ ] Bij traag gedrag in grote links: wanden voorfilteren op bounding box van de room i.p.v. alle link-wanden meenemen.
+- [ ] Bij traag gedrag in grote links: wanden/kolommen voorfilteren op bounding box van de room i.p.v. alles meenemen.
 
 ---
 
