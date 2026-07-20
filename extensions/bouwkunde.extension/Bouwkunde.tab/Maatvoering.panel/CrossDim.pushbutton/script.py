@@ -5,7 +5,8 @@ Plaats kruisende maatlijnen in rooms met één klik.
 Klik in een room om horizontale en verticale maatlijnen te plaatsen.
 
 Auteur: 3BM Bouwkunde
-Versie: 1.4.0 - Afwerkingswanden (tegelwerk) negeren, view-refresh na elke klik
+Versie: 1.5.0 - Room-detectie fix badkamer/toilet (afwerkvloer tilt roomvolume op),
+                default maatlijntype 'verkoop'
 """
 
 import clr
@@ -21,7 +22,7 @@ if LIB_DIR not in sys.path:
 
 from bm_logger import get_logger
 log = get_logger("CrossDim")
-log.info("CrossDim v1.4.0")
+log.info("CrossDim v1.5.0")
 
 from ui_template import BaseForm, UIFactory, DPIScaler, Huisstijl
 
@@ -69,7 +70,10 @@ def get_dimension_types():
 
 
 def find_default_dim_type_index(dim_types):
-    """Zoek index van eerste type met '1.8' in de naam."""
+    """Zoek index van default type: eerst 'verkoop' in de naam, dan '1.8'."""
+    for i, (dt_id, dt_name) in enumerate(dim_types):
+        if "verkoop" in dt_name.lower():
+            return i
     for i, (dt_id, dt_name) in enumerate(dim_types):
         if "1.8" in dt_name:
             return i
@@ -195,6 +199,34 @@ def collect_dim_elements(view, links, ignore_afwerking=True):
     return entries
 
 
+ROOM_TEST_HOOGTE_FT = 2.0  # ~600mm boven vloer/level
+
+
+def point_in_room(room, point):
+    """IsPointInRoom met Z-fallbacks.
+
+    PickPoint klikt op level-hoogte; een room-bounding afwerkvloer
+    (tegelvloer in badkamer/toilet) tilt de onderkant van het room-
+    volume daar net bovenuit, waardoor IsPointInRoom op klik-Z faalt.
+    Daarom hertesten op klik-Z + 600mm en op room-level + 600mm.
+    """
+    try:
+        if room.IsPointInRoom(point):
+            return True
+        if room.IsPointInRoom(XYZ(point.X, point.Y,
+                                  point.Z + ROOM_TEST_HOOGTE_FT)):
+            return True
+        level = room.Level
+        if level:
+            adjusted = XYZ(point.X, point.Y,
+                           level.Elevation + ROOM_TEST_HOOGTE_FT)
+            if room.IsPointInRoom(adjusted):
+                return True
+    except:
+        pass
+    return False
+
+
 def get_room_at_point(point, view, links):
     """Vind room op een punt: eerst host-document, dan gelinkte modellen.
 
@@ -207,7 +239,7 @@ def get_room_at_point(point, view, links):
         .ToElements()
 
     for room in rooms:
-        if room.IsPointInRoom(point):
+        if point_in_room(room, point):
             return room, None
 
     for link, link_doc, transform in links:
@@ -218,19 +250,8 @@ def get_room_at_point(point, view, links):
                 .WhereElementIsNotElementType()\
                 .ToElements()
             for room in link_rooms:
-                try:
-                    if room.IsPointInRoom(link_point):
-                        return room, transform
-                    # Klikpunt-Z kan buiten de room-hoogte vallen (verticale
-                    # link-offset) — hertest op level-hoogte van de room
-                    level = room.Level
-                    if level:
-                        adjusted = XYZ(link_point.X, link_point.Y,
-                                       level.Elevation + 1.0)
-                        if room.IsPointInRoom(adjusted):
-                            return room, transform
-                except:
-                    pass
+                if point_in_room(room, link_point):
+                    return room, transform
         except Exception as ex:
             log.debug("Link rooms failed: {}".format(ex))
 
@@ -707,7 +728,8 @@ def main():
     
     dim_count = 0
     room_count = 0
-    
+    miss_count = 0
+
     while True:
         try:
             click_point = uidoc.Selection.PickPoint(
@@ -718,6 +740,9 @@ def main():
             room, room_transform = get_room_at_point(click_point, active_view, links)
 
             if not room:
+                miss_count += 1
+                log.info("Geen room op klikpunt ({:.2f}, {:.2f})".format(
+                    click_point.X, click_point.Y))
                 continue
 
             room_name = room.get_Parameter(BuiltInParameter.ROOM_NAME).AsString() or "Unnamed"
@@ -751,10 +776,14 @@ def main():
             log.exception("Error")
             break
     
-    if dim_count > 0:
-        forms.alert("{} maatlijn(en) in {} room(s) geplaatst!".format(dim_count, room_count), title="CrossDim")
-    
-    log.finalize(True, "{} dimensions in {} rooms".format(dim_count, room_count))
+    if dim_count > 0 or miss_count > 0:
+        msg = "{} maatlijn(en) in {} room(s) geplaatst!".format(dim_count, room_count)
+        if miss_count:
+            msg += "\n\n{} klik(s) zonder room genegeerd.".format(miss_count)
+        forms.alert(msg, title="CrossDim")
+
+    log.finalize(True, "{} dimensions in {} rooms, {} misses".format(
+        dim_count, room_count, miss_count))
 
 
 if __name__ == "__main__":
