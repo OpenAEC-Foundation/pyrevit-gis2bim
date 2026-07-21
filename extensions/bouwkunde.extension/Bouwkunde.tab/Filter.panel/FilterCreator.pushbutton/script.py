@@ -134,29 +134,35 @@ def get_view_template(view):
     return None
 
 
-def apply_filter_to_view(view, filter_element, color=None, visible=True):
-    """Voeg filter toe aan view met optionele kleur override"""
+def apply_filter_to_view(view, filter_element, fg_color=None, bg_color=None, line_color=None, visible=True):
+    """Voeg filter toe aan view met optionele kleur overrides per kanaal"""
     try:
         view.AddFilter(filter_element.Id)
-        
-        if color:
+
+        if fg_color or bg_color or line_color:
             override = OverrideGraphicSettings()
             solid_id = get_solid_fill_pattern_id()
-            if solid_id != ElementId.InvalidElementId:
-                override.SetSurfaceForegroundPatternId(solid_id)
-                override.SetSurfaceBackgroundPatternId(solid_id)
-                override.SetCutForegroundPatternId(solid_id)
-                override.SetCutBackgroundPatternId(solid_id)
-            
-            override.SetSurfaceForegroundPatternColor(color)
-            override.SetSurfaceBackgroundPatternColor(color)
-            override.SetCutForegroundPatternColor(color)
-            override.SetCutBackgroundPatternColor(color)
-            override.SetProjectionLineColor(color)
-            override.SetCutLineColor(color)
-            
+
+            if fg_color:
+                if solid_id != ElementId.InvalidElementId:
+                    override.SetSurfaceForegroundPatternId(solid_id)
+                    override.SetCutForegroundPatternId(solid_id)
+                override.SetSurfaceForegroundPatternColor(fg_color)
+                override.SetCutForegroundPatternColor(fg_color)
+
+            if bg_color:
+                if solid_id != ElementId.InvalidElementId:
+                    override.SetSurfaceBackgroundPatternId(solid_id)
+                    override.SetCutBackgroundPatternId(solid_id)
+                override.SetSurfaceBackgroundPatternColor(bg_color)
+                override.SetCutBackgroundPatternColor(bg_color)
+
+            if line_color:
+                override.SetProjectionLineColor(line_color)
+                override.SetCutLineColor(line_color)
+
             view.SetFilterOverrides(filter_element.Id, override)
-        
+
         view.SetFilterVisibility(filter_element.Id, visible)
         return True
     except Exception as e:
@@ -171,14 +177,13 @@ class FilterCreatorForm(BaseForm):
     """Hoofd UI voor FilterCreator"""
     
     def __init__(self, element_data, view_info):
-        # Vergroot: 520 breed, 820 hoog
-        super(FilterCreatorForm, self).__init__("Filter Creator", 520, 820)
-        
+        # Vergroot: 520 breed, 900 hoog
+        super(FilterCreatorForm, self).__init__("Filter Creator", 520, 900)
+
         self.element_data = element_data
         self.view_info = view_info
         self.created_filter = None
-        self.selected_color = Color.FromArgb(255, 100, 100)
-        
+
         self.set_subtitle("Filter op basis van selectie")
         self._setup_ui()
     
@@ -286,28 +291,29 @@ class FilterCreatorForm(BaseForm):
         y += 175
         
         # === Toepassen ===
-        gb_apply = UIFactory.create_groupbox("Toepassen", content_width, 190)
+        gb_height = 300 if self.view_info['has_template'] else 270
+        gb_apply = UIFactory.create_groupbox("Toepassen", content_width, gb_height)
         gb_apply.Location = DPIScaler.scale_point(margin, y)
         self.pnl_content.Controls.Add(gb_apply)
-        
+
         # View/Template info
         view_text = "View: {}".format(self.view_info['view_name'][:35])
         if self.view_info['has_template']:
             view_text += "\nTemplate: {}".format(self.view_info['template_name'][:35])
-        
+
         lbl_view_info = UIFactory.create_label(view_text, font_size=9, color=Huisstijl.TEXT_SECONDARY)
         lbl_view_info.Location = DPIScaler.scale_point(12, 26)
         lbl_view_info.AutoSize = True
         gb_apply.Controls.Add(lbl_view_info)
-        
+
         # Toepassen opties
         apply_y = 60 if self.view_info['has_template'] else 50
-        
+
         self.chk_apply_view = UIFactory.create_checkbox("Toevoegen aan actieve view", True)
         self.chk_apply_view.Location = DPIScaler.scale_point(12, apply_y)
         self.chk_apply_view.CheckedChanged += self._on_apply_changed
         gb_apply.Controls.Add(self.chk_apply_view)
-        
+
         if self.view_info['has_template']:
             self.chk_apply_template = UIFactory.create_checkbox("Ook toevoegen aan template", True)
             self.chk_apply_template.Location = DPIScaler.scale_point(12, apply_y + 30)
@@ -315,13 +321,13 @@ class FilterCreatorForm(BaseForm):
             apply_y += 30
         else:
             self.chk_apply_template = None
-        
-        # Kleur
-        lbl_color = UIFactory.create_label("Kleur:", bold=True, font_size=9)
-        lbl_color.Location = DPIScaler.scale_point(12, apply_y + 42)
-        gb_apply.Controls.Add(lbl_color)
-        
-        self.color_buttons = []
+
+        # Element direct verbergen in view/template
+        self.chk_hide = UIFactory.create_checkbox("Element verbergen (filter uitzetten in view)", False)
+        self.chk_hide.Location = DPIScaler.scale_point(12, apply_y + 30)
+        gb_apply.Controls.Add(self.chk_hide)
+
+        # Kleurrijen: voorgrond / achtergrond / lijnen
         preset_colors = [
             Color.FromArgb(255, 100, 100),  # Rood
             Color.FromArgb(100, 200, 100),  # Groen
@@ -330,28 +336,42 @@ class FilterCreatorForm(BaseForm):
             Color.FromArgb(255, 150, 80),   # Oranje
             Color.FromArgb(180, 120, 220),  # Paars
         ]
-        
+
+        # None = geen override voor dat kanaal
+        self.row_colors = {
+            'fg': preset_colors[0],
+            'bg': None,
+            'line': preset_colors[0],
+        }
+        self.row_buttons = {'fg': [], 'bg': [], 'line': []}
+
         from System.Windows.Forms import Button as WFButton, FlatStyle as WFFlatStyle
-        for i, color in enumerate(preset_colors):
-            btn = WFButton()
-            btn.Text = ""
-            btn.Size = DPIScaler.scale_size(30, 30)
-            btn.Location = DPIScaler.scale_point(label_width + i * 36, apply_y + 38)
-            btn.BackColor = color
-            btn.FlatStyle = WFFlatStyle.Flat
-            btn.FlatAppearance.BorderSize = 1
-            btn.FlatAppearance.BorderColor = Huisstijl.MEDIUM_GRAY
-            btn.Tag = color
-            btn.Click += self._on_color_click
-            gb_apply.Controls.Add(btn)
-            self.color_buttons.append(btn)
-        
-        self.chk_no_color = UIFactory.create_checkbox("Geen kleur", False)
-        self.chk_no_color.Location = DPIScaler.scale_point(label_width + 230, apply_y + 40)
-        self.chk_no_color.CheckedChanged += self._on_no_color_changed
-        gb_apply.Controls.Add(self.chk_no_color)
-        
-        y += 205
+        color_rows = [('fg', "Voorgrond:"), ('bg', "Achtergrond:"), ('line', "Lijnen:")]
+        row_y = apply_y + 66
+
+        for key, label_text in color_rows:
+            lbl_row = UIFactory.create_label(label_text, bold=True, font_size=9)
+            lbl_row.Location = DPIScaler.scale_point(12, row_y + 8)
+            gb_apply.Controls.Add(lbl_row)
+
+            # Eerste knop = geen kleur voor dit kanaal
+            for i, color in enumerate([None] + preset_colors):
+                btn = WFButton()
+                btn.Text = "X" if color is None else ""
+                btn.Size = DPIScaler.scale_size(30, 30)
+                btn.Location = DPIScaler.scale_point(label_width + i * 36, row_y)
+                btn.BackColor = Color.White if color is None else color
+                btn.FlatStyle = WFFlatStyle.Flat
+                btn.FlatAppearance.BorderSize = 1
+                btn.FlatAppearance.BorderColor = Huisstijl.MEDIUM_GRAY
+                btn.Tag = (key, color)
+                btn.Click += self._on_color_click
+                gb_apply.Controls.Add(btn)
+                self.row_buttons[key].append(btn)
+
+            row_y += 38
+
+        y += gb_height + 15
         
         # === Bestaande filters ===
         existing = get_existing_filters()
@@ -373,36 +393,39 @@ class FilterCreatorForm(BaseForm):
         
         # Init
         self._update_preview()
-        self._highlight_selected_color(self.color_buttons[0])
-    
+        for key in self.row_buttons:
+            self._highlight_row(key)
+
     def _on_input_changed(self, sender, args):
         self._update_preview()
-    
+
     def _on_apply_changed(self, sender, args):
         enabled = self.chk_apply_view.Checked
-        for btn in self.color_buttons:
-            btn.Enabled = enabled and not self.chk_no_color.Checked
-        self.chk_no_color.Enabled = enabled
+        for buttons in self.row_buttons.values():
+            for btn in buttons:
+                btn.Enabled = enabled
+        self.chk_hide.Enabled = enabled
         if self.chk_apply_template:
             self.chk_apply_template.Enabled = enabled
-    
-    def _on_no_color_changed(self, sender, args):
-        for btn in self.color_buttons:
-            btn.Enabled = not self.chk_no_color.Checked
-    
+
     def _on_color_click(self, sender, args):
-        self.selected_color = sender.Tag
-        self._highlight_selected_color(sender)
-    
-    def _highlight_selected_color(self, selected_btn):
+        key, color = sender.Tag
+        self.row_colors[key] = color
+        self._highlight_row(key)
+
+    def _highlight_row(self, key):
         from System.Windows.Forms import FlatStyle as WFFlatStyle
-        for btn in self.color_buttons:
-            if btn == selected_btn:
-                btn.FlatStyle = WFFlatStyle.Flat
+        selected = self.row_colors[key]
+        for btn in self.row_buttons[key]:
+            _, btn_color = btn.Tag
+            btn.FlatStyle = WFFlatStyle.Flat
+            # Color is een struct: None apart vergelijken
+            is_selected = (btn_color is None and selected is None) or \
+                          (btn_color is not None and selected is not None and btn_color == selected)
+            if is_selected:
                 btn.FlatAppearance.BorderSize = 2
                 btn.FlatAppearance.BorderColor = Huisstijl.VIOLET
             else:
-                btn.FlatStyle = WFFlatStyle.Flat
                 btn.FlatAppearance.BorderSize = 1
                 btn.FlatAppearance.BorderColor = Huisstijl.MEDIUM_GRAY
     
@@ -441,10 +464,10 @@ class FilterCreatorForm(BaseForm):
         filter_type_idx = self.cmb_filter_type.SelectedIndex
         apply_to_view = self.chk_apply_view.Checked
         apply_to_template = self.chk_apply_template.Checked if self.chk_apply_template else False
-        use_color = not self.chk_no_color.Checked
-        
-        log.info("Creating filter: {} (apply_view={}, apply_template={})".format(
-            filter_name, apply_to_view, apply_to_template))
+        hide_element = self.chk_hide.Checked
+
+        log.info("Creating filter: {} (apply_view={}, apply_template={}, hide={})".format(
+            filter_name, apply_to_view, apply_to_template, hide_element))
         
         try:
             with Transaction(doc, "Filter: {}".format(filter_name)) as t:
@@ -462,37 +485,45 @@ class FilterCreatorForm(BaseForm):
                 else:
                     new_filter = ParameterFilterElement.Create(doc, filter_name, categories)
                 
-                # Kleur voorbereiden
-                color = None
-                if use_color:
-                    from Autodesk.Revit.DB import Color as RevitColor
-                    color = RevitColor(self.selected_color.R, self.selected_color.G, self.selected_color.B)
-                
+                # Kleuren voorbereiden per kanaal
+                from Autodesk.Revit.DB import Color as RevitColor
+
+                def to_revit_color(c):
+                    return RevitColor(c.R, c.G, c.B) if c is not None else None
+
+                fg_color = to_revit_color(self.row_colors['fg'])
+                bg_color = to_revit_color(self.row_colors['bg'])
+                line_color = to_revit_color(self.row_colors['line'])
+
                 # Toepassen
                 applied_to = []
                 active_view = doc.ActiveView
-                
+
                 if apply_to_view and active_view:
-                    if active_view.ViewType in [ViewType.FloorPlan, ViewType.CeilingPlan, 
+                    if active_view.ViewType in [ViewType.FloorPlan, ViewType.CeilingPlan,
                                                  ViewType.Elevation, ViewType.Section,
                                                  ViewType.ThreeD, ViewType.Detail]:
-                        if apply_filter_to_view(active_view, new_filter, color):
+                        if apply_filter_to_view(active_view, new_filter, fg_color, bg_color,
+                                                line_color, visible=not hide_element):
                             applied_to.append("view")
-                
+
                 if apply_to_template and self.view_info['template']:
                     template = self.view_info['template']
-                    if apply_filter_to_view(template, new_filter, color):
+                    if apply_filter_to_view(template, new_filter, fg_color, bg_color,
+                                            line_color, visible=not hide_element):
                         applied_to.append("template")
-                
+
                 t.Commit()
-                
+
                 self.created_filter = new_filter
                 log.info("Filter aangemaakt: {} -> {}".format(filter_name, applied_to))
-                
+
                 # Success
                 msg = "Filter '{}' aangemaakt!".format(filter_name)
                 if applied_to:
                     msg += "\n\nToegevoegd aan: {}".format(", ".join(applied_to))
+                if hide_element and applied_to:
+                    msg += "\nElementen zijn verborgen (filter visibility uit)."
                 
                 self.show_info(msg)
                 self.Close()

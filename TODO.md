@@ -1,6 +1,14 @@
 # 3BM pyRevit Project - TODO
 
-*Laatste update: 20 juli 2026*
+*Laatste update: 21 juli 2026*
+
+---
+
+## FilterCreator — hide + kleurkanalen (21 juli 2026, nieuw, Revit-test pending)
+
+> FilterCreator uitgebreid: checkbox "Element verbergen" (SetFilterVisibility uit op view én template), en drie aparte kleurrijen — voorgrond (surface/cut foreground pattern), achtergrond (background pattern), lijnen (projection/cut line color) — elk met X-knop = geen override. Oude "Geen kleur"-checkbox vervallen; form 820→900 hoog.
+
+- [ ] **Revit-test na Reload** — filter aanmaken met afwijkende voor/achtergrond + lijnkleur; check V/G overrides in de view. Hide-optie testen: element moet direct verdwijnen, kleuren blijven op het filter staan voor later aanzetten.
 
 ---
 
